@@ -1,0 +1,20 @@
+services:
+  proxy:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      PROXY_GATEWAY_ID: pi5
+      PROXY_DEVICE_TOKEN: ${PROXY_DEVICE_TOKEN:?Set a device token}
+      PROXY_ADMIN_TOKEN: ${PROXY_ADMIN_TOKEN:?Set a distinct admin token}
+    volumes:
+      - proxy-data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+volumes:
+  proxy-data:
