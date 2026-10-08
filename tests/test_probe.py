@@ -3,7 +3,8 @@ import pty
 import threading
 import time
 import pytest
-from device.probe import ATSession, ATError, parse_value
+from device.at_transport import ATSession
+from device.sim7600 import parse_value
 
 
 def test_fragmented_response_and_unsolicited_privacy():
@@ -15,7 +16,7 @@ def test_fragmented_response_and_unsolicited_privacy():
             time.sleep(.01)
     thread = threading.Thread(target=modem)
     try:
-        with ATSession(os.ttyname(slave), timeout=1) as session:
+        with ATSession(os.ttyname(slave), {"AT+CPIN?"}, timeout=1) as session:
             thread.start()
             lines = session.query('AT+CPIN?')
             assert parse_value('sim', lines) == 'READY'
@@ -33,7 +34,7 @@ def test_timeout_restores_port():
     before = termios.tcgetattr(slave)
     try:
         with pytest.raises(TimeoutError):
-            with ATSession(os.ttyname(slave), timeout=.1) as session:
+            with ATSession(os.ttyname(slave), {"AT"}, timeout=.1) as session:
                 session.query('AT')
         after = termios.tcgetattr(slave)
         assert after[:3] == before[:3]
@@ -42,3 +43,15 @@ def test_timeout_restores_port():
     finally:
         os.close(master)
         os.close(slave)
+
+
+def test_probe_accepts_a_non_at_device():
+    from device.interface import DeviceStatus, SimDeviceInterface
+    from tool.probe import probe
+    class FakeDevice(SimDeviceInterface):
+        def get_status(self):
+            return DeviceStatus(modem_responding=True, sim="READY")
+    result = probe(FakeDevice())
+    assert result["sim"] == "READY"
+    assert result["signal"] is None
+    assert result["schema_version"] == 1

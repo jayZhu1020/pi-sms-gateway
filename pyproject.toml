@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools==80.9.0", "wheel==0.45.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pi-sim-device"
+version = "0.1.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+sim-probe = "tool.probe:main"
+
+[tool.setuptools.packages.find]
+include = ["device*", "tool*"]
