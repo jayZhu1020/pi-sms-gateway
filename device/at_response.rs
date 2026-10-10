@@ -16,13 +16,21 @@ pub enum ResponseEvent {
     Complete,
 }
 
-/// Matches decoded lines to one command; unrelated lines remain notifications.
-/// The adapter supplies a nonempty reply prefix, such as `+CPIN:`. This handles
-/// diagnostic replies, not multiline SMS PDUs/prompts or ambiguous reply/URC
-/// prefixes; those need command-specific parsing. Outputs may contain private data.
-/// After completion/error/timeout, use no more input with this instance. Recover
-/// the transport before starting a new command after a timeout; this object
-/// cannot flush a port or distinguish an old `OK` from a new one on its own.
+/// Keeps track of the modem's reply to one command.
+///
+/// For example, when asking `AT+CPIN?`, tell it to expect lines starting with
+/// `+CPIN:`. It returns those lines as reply data, ignores the command's echo,
+/// and passes other lines back as modem notifications. `OK` finishes the
+/// command; an error or an expired deadline stops it.
+///
+/// Once stopped, this object cannot accept more lines. After a timeout, the
+/// caller must recover the serial connection before sending another command,
+/// so a delayed `OK` from the old command is not mistaken for the new reply.
+/// This object tracks replies; it does not read or reset the serial port.
+///
+/// This simple matcher handles diagnostic replies. SMS payloads spanning
+/// multiple lines, input prompts, and notifications that start like a reply
+/// need additional parsing. Returned lines may contain private information.
 pub struct AtResponse {
     command: &'static str,
     prefix: &'static str,
