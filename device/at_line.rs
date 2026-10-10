@@ -9,11 +9,18 @@ pub enum DecodeError {
     Failed,
 }
 
-/// Preserves complete lines in wire order, including unsolicited notifications.
-/// Empty framing lines are ignored. Accepts CRLF or LF, including split/repeated CR.
-/// After malformed/oversized input, discard this decoder and resynchronize the
-/// transport before another command; a late response must not satisfy that command.
-/// Buffered content may be sensitive, so the decoder intentionally has no Debug.
+/// Joins incoming bytes into lines and returns them in the order received.
+/// Keeps modem event messages too, even when no command asked for them.
+/// Ignores blank lines. A line ends with LF (`\n`), optionally preceded by
+/// one or more CR (`\r`) bytes; those bytes may arrive in separate reads.
+///
+/// Invalid input or a line over 4096 bytes permanently stops this decoder.
+/// The caller must recover the serial connection before using a new decoder.
+/// Otherwise, a delayed `OK` from an old command could look like the reply
+/// to a new command. This decoder does not perform that recovery itself.
+///
+/// We do not derive Rust's `Debug` printing trait here: buffered bytes may
+/// contain private message data that should not appear in diagnostic logs.
 #[derive(Default)]
 pub struct AtLineDecoder {
     pending: Vec<u8>,
@@ -22,8 +29,8 @@ pub struct AtLineDecoder {
 }
 
 impl AtLineDecoder {
-    /// Feed each received byte; Some(line) indicates one completed, owned line.
-    /// This only frames input; command correlation, timeouts and IO are separate.
+    /// Pass in one received byte. Returns `Some(line)` when a full line is ready.
+    /// Reading the port, matching replies to commands, and timeouts happen elsewhere.
     pub fn push(&mut self, byte: u8) -> Result<Option<String>, DecodeError> {
         if self.failed {
             return Err(DecodeError::Failed);
