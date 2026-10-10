@@ -5,6 +5,7 @@
 //! - CR starts an ending: wait for LF, allowing extra CR bytes in between.
 //! - LF completes the line, with or without a preceding CR; skip empty lines.
 //! - Text after CR but before LF is invalid, rather than overwriting old text.
+//!
 //! The CR flag persists across reads, so a split CRLF behaves like a joined one.
 
 // These Rust escapes represent single ASCII control bytes, not printed characters.

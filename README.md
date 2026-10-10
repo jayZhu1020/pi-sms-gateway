@@ -83,3 +83,25 @@ Raw modem input can contain private numbers and messages, so it should not be lo
 
 Protocol reference: [SIMCom SIM7500/SIM7600 AT command manual](https://files.waveshare.com/upload/6/68/SIM7500_SIM7600_Series_AT_Command_Manual_V2.00.pdf).
 Consult the manual and actual firmware before configuring or executing commands.
+
+## Automated checks
+
+GitHub Actions runs on PR updates targeting `main`, every push to `main`, and
+manual runs. It checks Rust source registration, formatting, Clippy, builds and
+unit tests. No Pi or credentials are needed. A tracked `.rs` file omitted from
+Bazel `srcs` fails the coverage check instead of silently escaping checks.
+
+With Bazelisk installed (and `bazel` available), run the same checks locally:
+
+```sh
+python3 .github/scripts/check_rust_sources.py
+bazel build --config=fmt //...
+bazel build --config=lint //...
+bazel build //...
+bazel test //... --test_output=errors
+```
+
+Automatically format registered Rust sources with `bazel run @rules_rust//:rustfmt`.
+CI reports formatting/lint failures; it does not rewrite files or push commits.
+Future Swift/Python code needs its own language checks. Add the `Rust checks`
+status to a GitHub branch ruleset to require it before merging.
