@@ -9,15 +9,15 @@ rust_library(
 )
 
 rust_library(
-    name = "at_line",
-    srcs = ["at_line.rs"],
-    crate_root = "at_line.rs",
+    name = "at_decoder",
+    srcs = ["at_decoder.rs", "at_constant.rs"],
+    crate_root = "at_decoder.rs",
     edition = "2024",
     visibility = ["//device:__pkg__"],
 )
 
 rust_test(
-    name = "at_line_test",
-    crate = ":at_line",
+    name = "at_decoder_test",
+    crate = ":at_decoder",
     size = "small",
 )
