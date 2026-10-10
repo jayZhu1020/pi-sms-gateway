@@ -1,4 +1,4 @@
-load("@rules_rust//rust:defs.bzl", "rust_library")
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
 rust_library(
     name = "sim_device",
@@ -6,4 +6,18 @@ rust_library(
     crate_root = "lib.rs",
     edition = "2024",
     visibility = ["//visibility:public"],
+)
+
+rust_library(
+    name = "at_decoder",
+    srcs = ["at_decoder.rs", "at_constant.rs"],
+    crate_root = "at_decoder.rs",
+    edition = "2024",
+    visibility = ["//device:__pkg__"],
+)
+
+rust_test(
+    name = "at_decoder_test",
+    crate = ":at_decoder",
+    size = "small",
 )
