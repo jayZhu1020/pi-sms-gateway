@@ -1,0 +1,9 @@
+load("@rules_rust//rust:defs.bzl", "rust_library")
+
+rust_library(
+    name = "sim_device",
+    srcs = ["lib.rs"],
+    crate_root = "lib.rs",
+    edition = "2024",
+    visibility = ["//visibility:public"],
+)
