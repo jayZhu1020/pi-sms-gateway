@@ -1,0 +1,6 @@
+# Opt-in checks: ordinary builds remain fast during local development.
+build:fmt --aspects=@rules_rust//rust:defs.bzl%rustfmt_aspect
+build:fmt --output_groups=rustfmt_checks
+build:lint --aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect
+build:lint --output_groups=clippy_checks
+build:lint --@rules_rust//rust/settings:clippy_flag=-Dwarnings
