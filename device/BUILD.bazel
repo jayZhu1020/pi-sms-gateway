@@ -21,3 +21,18 @@ rust_test(
     crate = ":at_decoder",
     size = "small",
 )
+
+rust_library(
+    name = "at_response",
+    srcs = ["at_response.rs"],
+    crate_root = "at_response.rs",
+    edition = "2024",
+    visibility = ["//device:__pkg__"],
+)
+
+rust_test(
+    name = "at_response_test",
+    crate = ":at_response",
+    deps = [":at_decoder"],
+    size = "small",
+)
