@@ -9,20 +9,16 @@ rust_library(
 )
 
 rust_library(
-    name = "serial_port",
-    srcs = ["serial_port.rs"],
-    crate_root = "serial_port.rs",
+    name = "terminal_settings",
+    srcs = ["terminal_settings.rs"],
+    crate_root = "terminal_settings.rs",
     edition = "2024",
-    target_compatible_with = select({
-        "@platforms//os:linux": [],
-        "@platforms//os:macos": [],
-        "//conditions:default": ["@platforms//:incompatible"],
-    }),
+    target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//device:__subpackages__"],
 )
 
 rust_test(
-    name = "serial_port_test",
-    crate = ":serial_port",
+    name = "terminal_settings_test",
+    crate = ":terminal_settings",
     size = "small",
 )
