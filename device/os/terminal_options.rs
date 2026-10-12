@@ -19,6 +19,7 @@ fn run(file: &File, args: &[String]) -> io::Result<String> {
 /// Saves a terminal's settings for explicit restoration later.
 /// `capture(file)` reads settings; `restore(file)` reapplies them. Both return
 /// IO errors on failure. Keep the original file open; no automatic restore occurs.
+#[derive(PartialEq, Eq)]
 pub struct SavedSettings(String);
 impl SavedSettings {
     pub fn capture(file: &File) -> io::Result<Self> {
