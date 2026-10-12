@@ -1,7 +1,5 @@
 //! Incremental framing for ASCII AT control/PDU-mode traffic, not SMS text mode.
 
-mod at_constant;
-
 const MAX_LINE_BYTES: usize = 4096;
 
 #[derive(Debug, PartialEq, Eq)]
