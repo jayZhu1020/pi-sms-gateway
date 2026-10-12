@@ -11,18 +11,19 @@ pub enum DecodeError {
     Failed,
 }
 
-/// Joins incoming bytes into lines and returns them in the order received.
-/// Keeps modem event messages too, even when no command asked for them.
-/// Ignores blank lines. A line ends with LF (`\n`), optionally preceded by
-/// one or more CR (`\r`) bytes; those bytes may arrive in separate reads.
+/// Turns incoming modem bytes into complete text lines.
 ///
-/// Invalid input or a line over 4096 bytes permanently stops this decoder.
-/// The caller must recover the serial connection before using a new decoder.
-/// Otherwise, a delayed `OK` from an old command could look like the reply
-/// to a new command. This decoder does not perform that recovery itself.
+/// Create an empty decoder with `AtLineDecoder::default()`. Call `push(byte)`
+/// once per received `u8`: `Ok(None)` means no nonempty line is ready;
+/// `Ok(Some(line))` returns a completed `String` without its CR/LF ending.
+/// Lines stay in arrival order, including notifications. Partial lines wait
+/// for more bytes; blank lines are skipped. Rules are in `at_constant.rs`.
 ///
-/// We do not derive Rust's `Debug` printing trait here: buffered bytes may
-/// contain private message data that should not appear in diagnostic logs.
+/// `push` returns `InvalidByte` for bad input and `LineTooLong` above 4096
+/// text bytes. Either error stops this decoder; later calls return `Failed`.
+/// Recover the serial connection before creating a replacement decoder.
+/// This object does not read the port, match replies, or handle timeouts.
+/// It has no `Debug` printing because buffered data may be private.
 #[derive(Default)]
 pub struct AtLineDecoder {
     pending: Vec<u8>,
@@ -31,8 +32,7 @@ pub struct AtLineDecoder {
 }
 
 impl AtLineDecoder {
-    /// Pass in one received byte. Returns `Some(line)` when a full line is ready.
-    /// Reading the port, matching replies to commands, and timeouts happen elsewhere.
+    /// Accept one byte; return a completed line, no line yet, or a decoding error.
     pub fn push(&mut self, byte: u8) -> Result<Option<String>, DecodeError> {
         if self.failed {
             return Err(DecodeError::Failed);
