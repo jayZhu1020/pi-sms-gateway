@@ -16,21 +16,24 @@ pub enum ResponseEvent {
     Complete,
 }
 
-/// Keeps track of the modem's reply to one command.
+/// Tracks the modem's reply to one diagnostic command.
 ///
-/// For example, when asking `AT+CPIN?`, tell it to expect lines starting with
-/// `+CPIN:`. It returns those lines as reply data, ignores the command's echo,
-/// and passes other lines back as modem notifications. `OK` finishes the
-/// command; an error or an expired deadline stops it.
+/// `new(command, prefix, deadline)` takes two static strings and an `Instant`.
+/// For `AT+CPIN?`, use `+CPIN:` as the reply prefix. It returns a tracker,
+/// or `InvalidPrefix` if the prefix is empty; it does not send the command.
 ///
-/// Once stopped, this object cannot accept more lines. After a timeout, the
-/// caller must recover the serial connection before sending another command,
-/// so a delayed `OK` from the old command is not mistaken for the new reply.
-/// This object tracks replies; it does not read or reset the serial port.
+/// `accept(line, now)` takes one complete `String` and the current time.
+/// It returns `Echo`, `Data(line)`, `Notification(line)`, or `Complete` on `OK`.
+/// Modem errors return `Rejected`. Other lines are treated as notifications;
+/// matching the prefix does not validate the reply's contents.
 ///
-/// This simple matcher handles diagnostic replies. SMS payloads spanning
-/// multiple lines, input prompts, and notifications that start like a reply
-/// need additional parsing. Returned lines may contain private information.
+/// `check_deadline(now)` takes the current time and returns `Ok(())` while
+/// active, `TimedOut` at/after the deadline, or `Closed` once stopped.
+/// Call it while idle too. Completion, rejection, or timeout stops the tracker.
+/// After timeout, recover the port before a new command so an old `OK` cannot
+/// look like its reply. This object does not read or reset the port.
+/// Multiline payloads, prompts, and overlapping reply/notification prefixes
+/// need additional parsing. Returned lines may contain private data.
 pub struct AtResponse {
     command: &'static str,
     prefix: &'static str,
@@ -39,6 +42,7 @@ pub struct AtResponse {
 }
 
 impl AtResponse {
+    /// Create a tracker from the sent command, expected reply prefix, and deadline.
     pub fn new(
         command: &'static str,
         prefix: &'static str,
@@ -55,7 +59,7 @@ impl AtResponse {
         })
     }
 
-    /// Call even when no bytes arrive, so silence still expires the command.
+    /// Return whether the command is active; expire it even when no line arrives.
     pub fn check_deadline(&mut self, now: Instant) -> Result<(), ResponseError> {
         if self.closed {
             return Err(ResponseError::Closed);
@@ -67,7 +71,7 @@ impl AtResponse {
         Ok(())
     }
 
-    /// Pass a complete line from AtLineDecoder; time is supplied for repeatable tests.
+    /// Classify a complete line at the given time; return an event or command error.
     pub fn accept(&mut self, line: String, now: Instant) -> Result<ResponseEvent, ResponseError> {
         self.check_deadline(now)?;
         if line == self.command {
