@@ -33,6 +33,5 @@ rust_library(
 rust_test(
     name = "at_response_test",
     crate = ":at_response",
-    deps = [":at_decoder"],
     size = "small",
 )

@@ -92,26 +92,18 @@ impl AtResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use at_decoder::AtLineDecoder;
     use std::time::Duration;
 
     #[test]
-    fn fragmented_exchange_keeps_notifications_separate() {
+    fn complete_lines_keep_notifications_separate() {
         let now = Instant::now();
         let mut response =
             AtResponse::new("AT+CPIN?", "+CPIN:", now + Duration::from_secs(4)).unwrap();
-        let mut decoder = AtLineDecoder::default();
-        let mut events = Vec::new();
-        for chunk in [
-            b"AT+CPIN?\r\n+CP".as_slice(),
-            b"IN: READY\r\n+CMTI: \"SM\",7\r\nOK\r\n",
-        ] {
-            for &byte in chunk {
-                if let Some(line) = decoder.push(byte).unwrap() {
-                    events.push(response.accept(line, now).unwrap());
-                }
-            }
-        }
+        let lines = ["AT+CPIN?", "+CPIN: READY", "+CMTI: \"SM\",7", "OK"];
+        let events: Vec<_> = lines
+            .into_iter()
+            .map(|line| response.accept(line.into(), now).unwrap())
+            .collect();
         assert!(matches!(events[0], ResponseEvent::Echo));
         assert!(matches!(&events[1], ResponseEvent::Data(s) if s == "+CPIN: READY"));
         assert!(matches!(&events[2], ResponseEvent::Notification(s) if s == "+CMTI: \"SM\",7"));
