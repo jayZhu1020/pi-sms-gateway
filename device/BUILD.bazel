@@ -1,4 +1,4 @@
-load("@rules_rust//rust:defs.bzl", "rust_library")
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
 rust_library(
     name = "sim_device",
@@ -6,4 +6,23 @@ rust_library(
     crate_root = "lib.rs",
     edition = "2024",
     visibility = ["//visibility:public"],
+)
+
+rust_library(
+    name = "serial_port",
+    srcs = ["serial_port.rs"],
+    crate_root = "serial_port.rs",
+    edition = "2024",
+    target_compatible_with = select({
+        "@platforms//os:linux": [],
+        "@platforms//os:macos": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    visibility = ["//device:__subpackages__"],
+)
+
+rust_test(
+    name = "serial_port_test",
+    crate = ":serial_port",
+    size = "small",
 )
