@@ -1,7 +1,6 @@
 //! Own a serial device and restore its terminal settings when finished.
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Write};
-use std::os::fd::AsRawFd;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -11,10 +10,6 @@ use std::process::{Command, Stdio};
 const OPEN_FLAGS: i32 = 0x800 | 0x100; // O_NONBLOCK | O_NOCTTY
 #[cfg(target_os = "macos")]
 const OPEN_FLAGS: i32 = 0x4 | 0x20000;
-const LOCK_EXCLUSIVE_NONBLOCKING: i32 = 2 | 4; // LOCK_EX | LOCK_NB
-unsafe extern "C" {
-    fn flock(fd: i32, operation: i32) -> i32;
-}
 
 fn settings(file: &File, args: &[&str]) -> io::Result<String> {
     // Pass the already-open device as stdin; no shell or second path lookup.
@@ -53,10 +48,7 @@ impl SerialPort {
             .write(true)
             .custom_flags(OPEN_FLAGS)
             .open(path)?;
-        // SAFETY: file owns a live descriptor; flock neither retains nor closes it.
-        if unsafe { flock(file.as_raw_fd(), LOCK_EXCLUSIVE_NONBLOCKING) } != 0 {
-            return Err(io::Error::last_os_error());
-        }
+        file.try_lock()?;
         let saved = settings(&file, &["-g"])?;
         let port = Self {
             file,
@@ -107,7 +99,7 @@ impl Write for SerialPort {
 mod tests {
     use super::*;
     use std::ffi::{CStr, c_char, c_void};
-    use std::os::fd::FromRawFd;
+    use std::os::fd::{AsRawFd, FromRawFd};
     #[link(name = "util")]
     unsafe extern "C" {
         fn openpty(
