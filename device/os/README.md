@@ -1,14 +1,14 @@
-# Device components
+# Device OS utilities
 
 ## Linux terminal settings
 
-`terminal_settings.rs` is an independent library wrapping `/bin/stty`.
+`terminal_options.rs` is an independent library wrapping `/bin/stty`.
 `TerminalOptions` builds settings using named methods; only `apply` changes the
 open terminal. It passes the existing file descriptor to stty without a shell.
 No caller needs to supply command-line flags.
 
 ```rust
-use terminal_settings::{DataBits, Parity, SavedSettings, StopBits, TerminalOptions};
+use terminal_options::{DataBits, Parity, SavedSettings, StopBits, TerminalOptions};
 
 let saved = SavedSettings::capture(&file)?;
 TerminalOptions::new()
@@ -37,7 +37,7 @@ it and does not automatically restore it. A future serial owner supplies cleanup
 Run on Linux with `/bin/stty` and Bazelisk:
 
 ```sh
-bazel test //device:terminal_settings_test --test_output=all
+bazel test //device/os:terminal_options_test --test_output=all
 ```
 
 Tests check argument translation, ordering, zero-rate rejection, and real stty

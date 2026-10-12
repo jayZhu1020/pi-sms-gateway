@@ -1,0 +1,16 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+rust_library(
+    name = "terminal_options",
+    srcs = ["terminal_options.rs"],
+    crate_root = "terminal_options.rs",
+    edition = "2024",
+    target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//device:__subpackages__"],
+)
+
+rust_test(
+    name = "terminal_options_test",
+    crate = ":terminal_options",
+    size = "small",
+)

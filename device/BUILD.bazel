@@ -1,4 +1,4 @@
-load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_library")
 
 rust_library(
     name = "sim_device",
@@ -6,19 +6,4 @@ rust_library(
     crate_root = "lib.rs",
     edition = "2024",
     visibility = ["//visibility:public"],
-)
-
-rust_library(
-    name = "terminal_settings",
-    srcs = ["terminal_settings.rs"],
-    crate_root = "terminal_settings.rs",
-    edition = "2024",
-    target_compatible_with = ["@platforms//os:linux"],
-    visibility = ["//device:__subpackages__"],
-)
-
-rust_test(
-    name = "terminal_settings_test",
-    crate = ":terminal_settings",
-    size = "small",
 )
