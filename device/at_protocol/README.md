@@ -98,3 +98,33 @@ Run `bazel test //device/at_protocol:at_command_writer_test --test_output=all`.
 Unit tests use a scripted byte writer to force short writes, temporary errors,
 permanent failure and deadline expiry without hardware or sleeps. Decoder and
 response tracker tests remain independent. OS transport integration is separate.
+
+## Reading a diagnostic reply
+
+`AtReplyReader` owns a nonblocking `Read` transport after a command has been sent.
+Construct it with the sent command, expected reply prefix and deadline, on a
+connection already synchronized by the caller. It combines `AtLineDecoder` with
+`AtResponse`; the prefix determines which lines are data versus notifications.
+The constructor returns errors for invalid prefixes and drops the supplied transport.
+
+`poll(now)` attempts one byte read, returning `Some(ResponseEvent)` when a line
+completes or `None` for partial/blank lines or temporary IO unavailability.
+Poll regularly with current monotonic time even during silence to enforce timeout.
+Echo, Data and Notification events preserve arrival order; Complete stops reading.
+The caller must process notifications rather than discard them. Nothing accumulates
+beyond the decoder's bounded line. IO errors, EOF, malformed input, modem rejection
+or timeout permanently stop the reader; subsequent polls return Closed.
+
+`finish()` returns the transport only after Complete; otherwise it returns the
+reader without further IO. It deliberately reads one byte at a time so bytes after
+OK remain on the transport for the next owner, including unsolicited notifications.
+This trades throughput for simple ownership with no unread buffer to lose. It is a
+diagnostic-command step, not a bulk-data reader or complete session implementation.
+There is no recovery: a fresh reader on a stale connection can still mistake a late
+OK for the current reply. Closing/reopening alone does not prove synchronization.
+
+Run `bazel test //device/at_protocol:at_reply_reader_integration_test --test_output=all`.
+These tests combine the real decoder and response tracker with an in-memory byte
+stream and scripted IO failures. They check ordered events, untouched trailing
+notifications, idle deadlines, EOF/rejection/malformed input, and refused handoff
+after failure. No OS terminal, hardware, sleeps or cleanup are needed.
