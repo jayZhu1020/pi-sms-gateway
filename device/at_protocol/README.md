@@ -128,3 +128,31 @@ These tests combine the real decoder and response tracker with an in-memory byte
 stream and scripted IO failures. They check ordered events, untouched trailing
 notifications, idle deadlines, EOF/rejection/malformed input, and refused handoff
 after failure. No OS terminal, hardware, sleeps or cleanup are needed.
+
+## One complete diagnostic exchange
+
+`AtExchange` owns a synchronized, nonblocking `Read + Write` transport from sending
+one command through receiving its final reply. Construct it with the command,
+expected data prefix and a single deadline; both command framing and an empty
+prefix are checked before IO. Invalid input drops the supplied transport.
+
+Call `poll(Instant::now())` repeatedly. It first advances `AtCommandWriter` until
+all command bytes are accepted, then transfers ownership to `AtReplyReader`.
+Writing and reading share the original deadline; entering the reading phase does
+not grant extra time. Each poll performs at most one IO operation and returns
+None or an ordered response event. Process Data and Notification events as they
+arrive. Stop polling after Complete and call `finish()` to recover the transport.
+An incomplete finish returns the exchange without doing more IO.
+
+On write/read/decode/response failure, the exchange drops its transport and cannot
+be reused. An owned SerialPort attempts settings restoration as it is dropped;
+this does not reset or resynchronize the modem. The exchange neither retries a
+whole command nor opens a fresh connection. A synchronized starting connection
+remains a caller precondition, so this is not yet an unattended modem session.
+
+Run `bazel test //device/at_protocol:at_exchange_integration_test --test_output=all`.
+`SimulatedModem` accepts two command bytes per write and asserts that reply reading
+starts only after the command's CR. Tests cover ordered notifications/data/completion,
+untouched trailing bytes, a shared deadline and closed-state behavior after timeout.
+They combine the real writer, reader, decoder and response tracker without hardware
+or sleeps. This is the reusable exchange step for a future read-only probe executable.
