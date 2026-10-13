@@ -70,3 +70,31 @@ After timeout, recover the port before a new command: a delayed old `OK` carries
 no command ID, so a fresh tracker alone cannot tell which command it belongs to.
 
 Reference: [SIMCom AT manual](https://files.waveshare.com/upload/6/68/SIM7500_SIM7600_Series_AT_Command_Manual_V2.00.pdf), sections 1.4, ATE, ATV and CPIN.
+
+## Sending a command
+
+`AtCommandWriter` owns a nonblocking `Write` transport while sending one command.
+Construct it with the transport, printable ASCII command (starting with `AT`,
+maximum 4096 bytes, no CR/LF) and a monotonic deadline. It appends the shared CR
+constant automatically. Invalid input returns an IO error and drops the supplied
+transport. This checks framing only, not whether a command is supported or safe.
+
+Call `poll(Instant::now())` once per scheduling turn. It attempts one write,
+returns false for incomplete progress, and returns true after all bytes are
+accepted. Partial writes resume without repeating bytes. WouldBlock/Interrupted
+leave it ready to retry; zero progress from a successful write, other IO errors,
+or expiration permanently stop it. Continue polling while idle to enforce timeout.
+The caller must supply nonblocking IO; this does not interrupt a blocking write.
+
+After success, `finish()` returns the owned transport for reply handling.
+It checks completion without writing any remaining bytes.
+Before completion or after failure it returns the command writer instead. Drop
+failed writers and recover the modem connection before another command; merely
+reopening a device does not prove that stale replies are gone. Successful writing
+is not a modem acknowledgment or UART-drain guarantee. No automatic retry of the
+whole command, parser integration or recovery is included yet.
+
+Run `bazel test //device/at_protocol:at_command_writer_test --test_output=all`.
+Unit tests use a scripted byte writer to force short writes, temporary errors,
+permanent failure and deadline expiry without hardware or sleeps. Decoder and
+response tracker tests remain independent. OS transport integration is separate.
