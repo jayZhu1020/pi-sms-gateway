@@ -9,7 +9,7 @@ use std::time::Instant;
 /// `poll(now)` attempts one write: true means all bytes were accepted, false means
 /// retry later. Partial writes resume at the next byte; Interrupted/WouldBlock retry.
 /// Poll while idle to enforce the deadline. Other errors permanently stop writing.
-/// `into_transport()` returns the writer only after success; otherwise returns self.
+/// `finish()` returns the writer only after success; otherwise returns self.
 /// Success means bytes accepted by the OS, not modem acknowledgment or UART drain.
 /// After failure, drop this owner; a later session must recover before another command.
 /// No reply parsing, sleep, blocking-IO protection, or automatic recovery is provided.
@@ -71,7 +71,9 @@ impl<W: Write> AtCommandWriter<W> {
         self.failed = false;
         Ok(self.offset == self.bytes.len())
     }
-    pub fn into_transport(self) -> Result<W, Self> {
+    /// Return the transport if all command bytes were written.
+    /// Otherwise, return this command writer without writing more bytes.
+    pub fn finish(self) -> Result<W, Self> {
         if !self.failed && self.offset == self.bytes.len() {
             Ok(self.transport)
         } else {
@@ -125,7 +127,7 @@ mod tests {
             assert_eq!(writer.poll(now).unwrap(), expected);
         }
         assert!(writer.poll(now + Duration::from_secs(2)).unwrap());
-        let transport = writer.into_transport().ok().unwrap();
+        let transport = writer.finish().ok().unwrap();
         assert_eq!(transport.accepted, b"AT+CPIN?\r");
         assert!(transport.outcomes.is_empty());
     }
@@ -145,7 +147,7 @@ mod tests {
                 writer.poll(now).unwrap_err().kind(),
                 io::ErrorKind::BrokenPipe
             );
-            assert!(writer.into_transport().is_err());
+            assert!(writer.finish().is_err());
         }
         let mut writer =
             AtCommandWriter::new(scripted(vec![Ok(1)]), "AT", now + Duration::from_secs(1))
@@ -158,7 +160,7 @@ mod tests {
                 .kind(),
             io::ErrorKind::TimedOut
         );
-        assert!(writer.into_transport().is_err());
+        assert!(writer.finish().is_err());
     }
     #[test]
     fn validates_framing_before_writing() {
@@ -171,6 +173,6 @@ mod tests {
                 .is_err()
         );
         let writer = AtCommandWriter::new(scripted(vec![]), "AT", now).unwrap();
-        assert!(writer.into_transport().is_err());
+        assert!(writer.finish().is_err());
     }
 }

@@ -86,7 +86,8 @@ leave it ready to retry; zero progress from a successful write, other IO errors,
 or expiration permanently stop it. Continue polling while idle to enforce timeout.
 The caller must supply nonblocking IO; this does not interrupt a blocking write.
 
-After success, `into_transport()` returns the owned transport for reply handling.
+After success, `finish()` returns the owned transport for reply handling.
+It checks completion without writing any remaining bytes.
 Before completion or after failure it returns the command writer instead. Drop
 failed writers and recover the modem connection before another command; merely
 reopening a device does not prove that stale replies are gone. Successful writing
