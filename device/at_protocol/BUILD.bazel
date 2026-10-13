@@ -50,3 +50,21 @@ rust_test(
     crate = ":at_command_writer",
     size = "small",
 )
+
+rust_library(
+    name = "at_reply_reader",
+    srcs = ["at_reply_reader.rs"],
+    crate_root = "at_reply_reader.rs",
+    edition = "2024",
+    deps = [":at_decoder", ":at_response"],
+    visibility = ["//device:__pkg__"],
+)
+
+rust_test(
+    name = "at_reply_reader_integration_test",
+    srcs = ["at_reply_reader_integration_test.rs"],
+    crate_root = "at_reply_reader_integration_test.rs",
+    edition = "2024",
+    deps = [":at_reply_reader", ":at_response"],
+    size = "small",
+)
