@@ -4,3 +4,8 @@ build:fmt --output_groups=rustfmt_checks
 build:lint --aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect
 build:lint --output_groups=clippy_checks
 build:lint --@rules_rust//rust/settings:clippy_flag=-Dwarnings
+
+# Cross-build self-contained ARM64 Linux binaries for the Pi.
+build:pi --platforms=//platforms/pi:platform
+build:pi --compilation_mode=opt
+build:pi --extra_toolchains=@zig_sdk//toolchain:linux_arm64_musl
