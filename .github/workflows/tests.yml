@@ -38,3 +38,10 @@ jobs:
         run: bazel build //...
       - name: Run all tests
         run: bazel test //... --test_output=errors
+      - name: Smoke-test probe CLI
+        run: |
+          bazel run //tool:sim_probe -- --help
+          if bazel-bin/tool/sim_probe /nonexistent/serial-port; then
+            echo "Expected nonexistent-device failure"
+            exit 1
+          fi

@@ -1,0 +1,10 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary")
+
+rust_binary(
+    name = "sim_probe",
+    srcs = ["sim_probe.rs"],
+    crate_root = "sim_probe.rs",
+    edition = "2024",
+    deps = ["//device:serial_port", "//device:sim7600_probe"],
+    target_compatible_with = ["@platforms//os:linux"],
+)
