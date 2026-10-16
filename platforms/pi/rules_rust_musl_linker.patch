@@ -1,0 +1,18 @@
+--- a/rust/private/repository_utils.bzl
++++ b/rust/private/repository_utils.bzl
+@@ -345,6 +345,7 @@
+     rustc = "//:rustc",
+     linker = {linker_label},
+     linker_type = {linker_type},
++    linker_preference = {linker_preference},
+     rust_objcopy = {rust_objcopy_label},
+     rustfmt = {rustfmt_label},
+     cargo = "//:cargo",
+@@ -476,6 +477,7 @@
+         llvm_lib_label = repr(llvm_lib_label),
+         linker_label = repr(linker_label),
+         linker_type = repr(linker_type),
++        linker_preference = repr("rust" if target_triple.str == "aarch64-unknown-linux-musl" else None),
+         rust_objcopy_label = repr(rust_objcopy_label),
+         extra_rustc_flags = extra_rustc_flags,
+         extra_exec_rustc_flags = extra_exec_rustc_flags,
