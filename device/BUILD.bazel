@@ -15,7 +15,7 @@ rust_library(
     edition = "2024",
     deps = ["//device/os:terminal_options"],
     target_compatible_with = ["@platforms//os:linux"],
-    visibility = ["//device:__subpackages__"],
+    visibility = ["//device:__subpackages__", "//tool:__pkg__"],
 )
 
 rust_test(
@@ -25,5 +25,23 @@ rust_test(
     edition = "2024",
     deps = [":serial_port", "//device/os:terminal_options"],
     target_compatible_with = ["@platforms//os:linux"],
+    size = "small",
+)
+
+rust_library(
+    name = "sim7600_probe",
+    srcs = ["sim7600_probe.rs"],
+    crate_root = "sim7600_probe.rs",
+    edition = "2024",
+    deps = ["//device/at_protocol:at_exchange", "//device/at_protocol:at_response"],
+    visibility = ["//tool:__pkg__"],
+)
+
+rust_test(
+    name = "sim7600_probe_integration_test",
+    srcs = ["sim7600_probe_integration_test.rs"],
+    crate_root = "sim7600_probe_integration_test.rs",
+    edition = "2024",
+    deps = [":sim7600_probe"],
     size = "small",
 )
