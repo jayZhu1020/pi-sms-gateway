@@ -45,3 +45,30 @@ jobs:
             echo "Expected nonexistent-device failure"
             exit 1
           fi
+
+  pi-build:
+    name: Pi cross-build (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: bazel-contrib/setup-bazel@8cb04a772ab4c1eb984e9c1b493a182e96c5e425 # 0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+          cache-save: ${{ github.event_name != 'pull_request' }}
+      - name: Cross-build an ARM64 Linux executable
+        run: bazel build --config=pi //platforms/pi:smoke
+      - name: Verify architecture and static linking
+        run: python3 platforms/pi/verify_binary.py bazel-bin/platforms/pi/smoke
+      - name: Execute on emulated ARM64 Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user
+          test "$(qemu-aarch64 bazel-bin/platforms/pi/smoke)" = "Pi build smoke test: linux aarch64"

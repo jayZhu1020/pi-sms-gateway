@@ -2,6 +2,24 @@ module(name = "pi_sms_gateway", version = "0.1.0")
 bazel_dep(name = "rules_rust", version = "0.74.0")
 bazel_dep(name = "platforms", version = "1.1.0")
 rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
-rust.toolchain(edition = "2024", versions = ["1.99.0"])
+rust.toolchain(
+    edition = "2024",
+    versions = ["1.99.0"],
+    extra_target_triples = ["aarch64-unknown-linux-musl"],
+    extra_rustc_flags_triples = {
+        "aarch64-unknown-linux-musl": ["-Ctarget-feature=+crt-static", "-Clink-self-contained=yes"],
+    },
+)
 use_repo(rust, "rust_toolchains")
 register_toolchains("@rust_toolchains//:all")
+
+bazel_dep(name = "hermetic_cc_toolchain", version = "4.3.0")
+zig = use_extension("@hermetic_cc_toolchain//toolchain:ext.bzl", "toolchains")
+use_repo(zig, "zig_sdk")
+
+# Select Rust's bundled linker only for the musl target, preserving host linking.
+single_version_override(
+    module_name = "rules_rust",
+    patches = ["//platforms/pi:rules_rust_musl_linker.patch"],
+    patch_strip = 1,
+)

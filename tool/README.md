@@ -16,9 +16,18 @@ bazel test //device:sim7600_probe_integration_test --test_output=all
 ```
 
 The executable is Linux-only. Pure adapter tests also run on macOS. A default
-x86-64 Linux build cannot run on the Pi's ARM64 CPU. An ARM64 Linux build host can
-build this target natively; automated cross-build, remote installation and the
-pi_updater command are a subsequent step. Do not install a compiler on the Pi.
+x86-64 Linux build cannot run on the Pi's ARM64 CPU. Build off-device with the Pi
+configuration, then copy the executable to the Pi:
+
+```sh
+bazel build --config=pi //tool:sim_probe
+python3 platforms/pi/verify_binary.py bazel-bin/tool/sim_probe
+scp bazel-bin/tool/sim_probe USER@PI_HOST:/tmp/sim_probe
+ssh USER@PI_HOST '/tmp/sim_probe --help'
+```
+
+The Pi requires `/bin/stty` and serial-device permissions. The updater remains
+future work. Remove the temporary executable after testing.
 
 ## Run an ARM64 executable after installation
 
@@ -29,7 +38,7 @@ pi_updater command are a subsequent step. Do not install a compiler on the Pi.
 
 `/dev/ttyUSB2` is an example: use the verified AT port or its stable by-id path,
 not a guessed GPS/diagnostic port. The user needs read/write device access.
-The runtime needs `/bin/stty`. SerialPort configures raw 115200 8N1, takes an
+The runtime needs `/bin/stty`. SerialPort configures raw 8N1, takes an
 advisory lock and restores terminal settings on close (best effort on errors).
 
 Start with a synchronized modem connection and no other AT client. This initial
@@ -62,6 +71,7 @@ The separate integration tests combine the real exchange/parser with a simulated
 modem, asserting the exact outgoing command and testing READY/PIN/PUK, notification
 counting, invalid/duplicate/missing status, rejection, EOF and an expired deadline.
 Ubuntu CI builds the executable and smoke-tests help and a nonexistent-device
-failure. Real-modem validation remains pending; no hardware result is claimed.
+failure. Hardware readiness depends on the actual SIM/modem state; a modem error
+must remain a failing probe result even when transport works.
 
 Protocol reference: [SIMCom AT manual, CPIN section](https://files.waveshare.com/wiki/SIM7600G-H/SIM7500_SIM7600_Series_AT_Command_Manual_V3.00.pdf).
