@@ -1,0 +1,14 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary")
+
+platform(
+    name = "platform",
+    constraint_values = ["@platforms//os:linux", "@platforms//cpu:aarch64"],
+)
+
+rust_binary(
+    name = "smoke",
+    srcs = ["smoke.rs"],
+    edition = "2024",
+)
+
+exports_files(["rules_rust_musl_linker.patch"])
