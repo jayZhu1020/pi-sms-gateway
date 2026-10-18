@@ -29,12 +29,7 @@ fn run() -> io::Result<()> {
         (port, None)
     };
     port.close()?;
-    let status = match result.status {
-        SimStatus::Ready => "READY",
-        SimStatus::PinRequired => "SIM PIN",
-        SimStatus::PukRequired => "SIM PUK",
-    };
-    println!("SIM status: {status}");
+    println!("SIM status: {}", result.status);
     let mut notifications = result.notifications;
     if let Some(network) = network {
         println!(

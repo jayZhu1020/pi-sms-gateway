@@ -17,6 +17,7 @@ rust_test(
 
 rust_library(
     name = "at_response",
+    deps = [":at_command"],
     srcs = ["at_response.rs"],
     crate_root = "at_response.rs",
     edition = "2024",
@@ -41,7 +42,7 @@ rust_library(
     srcs = ["at_command_writer.rs"],
     crate_root = "at_command_writer.rs",
     edition = "2024",
-    deps = [":at_constant"],
+    deps = [":at_command", ":at_constant"],
     visibility = ["//device:__pkg__"],
 )
 
@@ -56,7 +57,7 @@ rust_library(
     srcs = ["at_reply_reader.rs"],
     crate_root = "at_reply_reader.rs",
     edition = "2024",
-    deps = [":at_decoder", ":at_response"],
+    deps = [":at_command", ":at_decoder", ":at_response"],
     visibility = ["//device:__pkg__"],
 )
 
@@ -65,7 +66,7 @@ rust_test(
     srcs = ["at_reply_reader_integration_test.rs"],
     crate_root = "at_reply_reader_integration_test.rs",
     edition = "2024",
-    deps = [":at_reply_reader", ":at_response"],
+    deps = [":at_command", ":at_reply_reader", ":at_response"],
     size = "small",
 )
 
@@ -74,7 +75,7 @@ rust_library(
     srcs = ["at_exchange.rs"],
     crate_root = "at_exchange.rs",
     edition = "2024",
-    deps = [":at_command_writer", ":at_reply_reader", ":at_response"],
+    deps = [":at_command", ":at_command_writer", ":at_reply_reader", ":at_response"],
     visibility = ["//device:__pkg__"],
 )
 
@@ -83,6 +84,20 @@ rust_test(
     srcs = ["at_exchange_integration_test.rs"],
     crate_root = "at_exchange_integration_test.rs",
     edition = "2024",
-    deps = [":at_exchange", ":at_reply_reader", ":at_response"],
+    deps = [":at_command", ":at_exchange", ":at_reply_reader", ":at_response"],
+    size = "small",
+)
+
+rust_library(
+    name = "at_command",
+    srcs = ["at_command.rs"],
+    crate_root = "at_command.rs",
+    edition = "2024",
+    visibility = ["//device:__subpackages__"],
+)
+
+rust_test(
+    name = "at_command_test",
+    crate = ":at_command",
     size = "small",
 )

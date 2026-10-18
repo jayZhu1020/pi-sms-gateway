@@ -1,11 +1,12 @@
 //! Send one ASCII AT command through a nonblocking byte transport.
+use at_command::Command;
 use std::io::{self, Write};
 use std::time::Instant;
 
 /// Sends a command once, including its final CR byte.
 /// `new(transport, command, deadline)` takes ownership of a nonblocking writer.
-/// It accepts printable ASCII starting with AT, without line endings, up to 4096
-/// bytes. Invalid input returns InvalidInput and drops the supplied transport.
+/// Only supported semantic commands can be sent; the translation layer owns
+/// their printable wire encoding. Arbitrary caller-supplied strings are not accepted.
 /// `poll(now)` attempts one write: true means all bytes were accepted, false means
 /// retry later. Partial writes resume at the next byte; Interrupted/WouldBlock retry.
 /// Poll while idle to enforce the deadline. Other errors permanently stop writing.
@@ -21,25 +22,16 @@ pub struct AtCommandWriter<W> {
     failed: bool,
 }
 impl<W: Write> AtCommandWriter<W> {
-    pub fn new(transport: W, command: &str, deadline: Instant) -> io::Result<Self> {
-        if !command.starts_with("AT")
-            || command.len() > 4096
-            || !command.bytes().all(|byte| matches!(byte, b' '..=b'~'))
-        {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "invalid AT command",
-            ));
-        }
-        let mut bytes = command.as_bytes().to_vec();
+    pub fn new(transport: W, command: Command, deadline: Instant) -> Self {
+        let mut bytes = command.encode().as_bytes().to_vec();
         bytes.push(at_constant::CR);
-        Ok(Self {
+        Self {
             transport,
             bytes,
             offset: 0,
             deadline,
             failed: false,
-        })
+        }
     }
     pub fn poll(&mut self, now: Instant) -> io::Result<bool> {
         if self.failed {
@@ -121,8 +113,11 @@ mod tests {
             Err(io::ErrorKind::Interrupted.into()),
             Ok(99),
         ]);
-        let mut writer =
-            AtCommandWriter::new(transport, "AT+CPIN?", now + Duration::from_secs(1)).unwrap();
+        let mut writer = AtCommandWriter::new(
+            transport,
+            Command::QuerySimReadiness,
+            now + Duration::from_secs(1),
+        );
         for expected in [false, false, false, true] {
             assert_eq!(writer.poll(now).unwrap(), expected);
         }
@@ -137,10 +132,9 @@ mod tests {
         for error in [Ok(0), Err(io::ErrorKind::PermissionDenied.into())] {
             let mut writer = AtCommandWriter::new(
                 scripted(vec![Ok(1), error]),
-                "AT",
+                Command::CheckConnection,
                 now + Duration::from_secs(1),
-            )
-            .unwrap();
+            );
             assert!(!writer.poll(now).unwrap());
             assert!(writer.poll(now).is_err());
             assert_eq!(
@@ -149,9 +143,11 @@ mod tests {
             );
             assert!(writer.finish().is_err());
         }
-        let mut writer =
-            AtCommandWriter::new(scripted(vec![Ok(1)]), "AT", now + Duration::from_secs(1))
-                .unwrap();
+        let mut writer = AtCommandWriter::new(
+            scripted(vec![Ok(1)]),
+            Command::CheckConnection,
+            now + Duration::from_secs(1),
+        );
         assert!(!writer.poll(now).unwrap());
         assert_eq!(
             writer
@@ -163,16 +159,9 @@ mod tests {
         assert!(writer.finish().is_err());
     }
     #[test]
-    fn validates_framing_before_writing() {
-        let now = Instant::now();
-        for command in ["", "HELLO", "AT\r", "AT\nAT", "AT\0", "ATé"] {
-            assert!(AtCommandWriter::new(scripted(vec![]), command, now).is_err());
-        }
-        assert!(
-            AtCommandWriter::new(scripted(vec![]), &format!("AT{}", "X".repeat(4095)), now)
-                .is_err()
-        );
-        let writer = AtCommandWriter::new(scripted(vec![]), "AT", now).unwrap();
+    fn unfinished_command_cannot_be_handed_off() {
+        let writer =
+            AtCommandWriter::new(scripted(vec![]), Command::CheckConnection, Instant::now());
         assert!(writer.finish().is_err());
     }
 }

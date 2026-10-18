@@ -1,4 +1,5 @@
 //! Combine the real byte decoder and reply tracker through the reader's public API.
+use at_command::{Command, Notification, Reply, SimStatus};
 use at_reply_reader::{AtReplyReader, ReplyReadError};
 use at_response::{ResponseError, ResponseEvent};
 use std::io::{self, Cursor, Read};
@@ -10,11 +11,9 @@ fn routes_lines_and_leaves_bytes_after_completion_unread() {
     let input = b"AT+CPIN?\r\n+CPIN: READY\r\n+CMTI: 1\r\nOK\r\n+CMTI: 2\r\n";
     let mut reader = AtReplyReader::new(
         Cursor::new(input),
-        "AT+CPIN?",
-        "+CPIN:",
+        Command::QuerySimReadiness,
         now + Duration::from_secs(1),
-    )
-    .unwrap();
+    );
     let mut events = Vec::new();
     for _ in 0..input.len() {
         if let Some(event) = reader.poll(now).unwrap() {
@@ -27,8 +26,13 @@ fn routes_lines_and_leaves_bytes_after_completion_unread() {
     }
     assert_eq!(events.len(), 4);
     assert!(matches!(events[0], ResponseEvent::Echo));
-    assert!(matches!(&events[1], ResponseEvent::Data(s) if s == "+CPIN: READY"));
-    assert!(matches!(&events[2], ResponseEvent::Notification(s) if s == "+CMTI: 1"));
+    assert!(matches!(
+        &events[1],
+        ResponseEvent::Data(Reply::SimReadiness(SimStatus::Ready))
+    ));
+    assert!(
+        matches!(&events[2], ResponseEvent::Notification(Notification::Unknown(s)) if s == "+CMTI: 1")
+    );
     assert!(matches!(events[3], ResponseEvent::Complete));
     assert!(matches!(reader.poll(now), Err(ReplyReadError::Closed)));
     let mut transport = reader.finish().ok().unwrap();
@@ -49,7 +53,7 @@ fn silence_expires_and_permanent_errors_stop_reading() {
     let deadline = now + Duration::from_secs(1);
     for kind in [io::ErrorKind::WouldBlock, io::ErrorKind::Interrupted] {
         let mut reader =
-            AtReplyReader::new(Unavailable(kind), "AT+CPIN?", "+CPIN:", deadline).unwrap();
+            AtReplyReader::new(Unavailable(kind), Command::QuerySimReadiness, deadline);
         assert!(reader.poll(now).unwrap().is_none());
         assert!(matches!(
             reader.poll(deadline),
@@ -60,11 +64,9 @@ fn silence_expires_and_permanent_errors_stop_reading() {
     }
     let mut reader = AtReplyReader::new(
         Unavailable(io::ErrorKind::BrokenPipe),
-        "AT",
-        "+X:",
+        Command::CheckConnection,
         deadline,
-    )
-    .unwrap();
+    );
     assert!(matches!(reader.poll(now), Err(ReplyReadError::Io(_))));
     assert!(matches!(reader.poll(now), Err(ReplyReadError::Closed)));
     assert!(reader.finish().is_err());
@@ -76,11 +78,9 @@ fn malformed_input_rejection_and_eof_prevent_handoff() {
     for input in [b"\0".as_slice(), b"ERROR\r\n", b""] {
         let mut reader = AtReplyReader::new(
             Cursor::new(input),
-            "AT",
-            "+X:",
+            Command::CheckConnection,
             now + Duration::from_secs(1),
-        )
-        .unwrap();
+        );
         let error = (0..=input.len())
             .find_map(|_| reader.poll(now).err())
             .unwrap();

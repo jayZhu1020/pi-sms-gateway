@@ -33,7 +33,7 @@ rust_library(
     srcs = ["sim7600_probe.rs"],
     crate_root = "sim7600_probe.rs",
     edition = "2024",
-    deps = ["//device/at_protocol:at_exchange", "//device/at_protocol:at_response"],
+    deps = ["//device/at_protocol:at_command", "//device/at_protocol:at_exchange", "//device/at_protocol:at_response"],
     visibility = ["//tool:__pkg__"],
 )
 
