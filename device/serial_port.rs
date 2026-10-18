@@ -11,7 +11,7 @@ const OPEN_FLAGS: i32 = 0x800 | 0x100; // Linux O_NONBLOCK | O_NOCTTY
 /// Owns one serial port for raw byte reads and writes.
 ///
 /// `open(path)` takes a device path and returns a locked, nonblocking port or
-/// an IO error. It configures 115200 baud, 8 data bits, no parity/flow control,
+/// an IO error. It preserves baud and configures 8 data bits, no parity/flow control,
 /// one stop bit, and no terminal echo. Requires the OS `stty` utility.
 /// Reads/writes return byte counts or IO errors; an idle read can return
 /// `WouldBlock`, and a write can be partial. The caller handles retries/deadlines.
@@ -25,6 +25,7 @@ pub struct SerialPort {
 }
 
 impl SerialPort {
+    /// Preserve the current baud rate, including on USB modems that ignore it.
     pub fn open(path: &Path) -> io::Result<Self> {
         let file = OpenOptions::new()
             .read(true)
@@ -40,7 +41,6 @@ impl SerialPort {
         };
         TerminalOptions::new()
             .raw_mode()
-            .set_baud_rate(115200)
             .set_data_bits(DataBits::Eight)
             .set_parity(Parity::None)
             .set_stop_bits(StopBits::One)
