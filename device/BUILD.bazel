@@ -45,3 +45,12 @@ rust_test(
     deps = [":sim7600_probe"],
     size = "small",
 )
+
+rust_test(
+    name = "sms_storage_probe_integration_test",
+    srcs = ["sms_storage_probe_integration_test.rs"],
+    crate_root = "sms_storage_probe_integration_test.rs",
+    edition = "2024",
+    deps = [":sim7600_probe"],
+    size = "small",
+)

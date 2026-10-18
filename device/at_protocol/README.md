@@ -58,6 +58,8 @@ notification payloads. Add future commands and their decoders here together.
 | `AT+CPIN?` | `Command::QuerySimReadiness` → `Reply::SimReadiness(SimStatus)` |
 | `AT+CREG?` | `Command::QueryCircuitSwitchedRegistration` → `Reply::Registration(RegistrationStatus)` |
 | `AT+CEREG?` | `Command::QueryLteRegistration` → `Reply::Registration(RegistrationStatus)` |
+| `AT+CMGF?` | `Command::QuerySmsFormat` → `Reply::SmsFormat(SmsFormat)` |
+| `AT+CPMS?` | `Command::QuerySmsStorage` → `Reply::SmsStorage(SmsStorage)` |
 | `+CMTI: "SM",7` | `Notification::SmsStored { storage: MessageStorage::Sim, index: 7 }` |
 
 `AtResponse` tracks completion and deadlines around this translation. Give it a
@@ -74,6 +76,11 @@ durable message identity. Unrecognized or malformed notifications remain
 `Notification::Unknown` with their original text. Notifications deliberately lack
 `Debug`: raw future events may contain private data and must not be logged.
 Registration location fields are validated and discarded, never exposed in replies.
+Storage replies preserve the three roles independently, validate unsigned occupancy
+counts and reject used counts above capacity. Unknown storage names remain private;
+`MessageStorage` presentation uses a fixed safe label. Replies containing storage
+therefore also omit `Debug`. Format/storage queries inspect current configuration;
+they never select a store or alter SMS format/status.
 
 Unknown lines become notifications; the matcher does not prove they are valid
 modem events. Numeric result codes, multiline payloads, prompts and prefixes shared
