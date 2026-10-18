@@ -1,6 +1,6 @@
-//! One-shot Linux CLI for the SIM7600 read-only SIM readiness probe.
+//! One-shot Linux CLI for read-only SIM and network registration diagnostics.
 use serial_port::SerialPort;
-use sim7600_probe::{SimStatus, probe_sim};
+use sim7600_probe::{SimStatus, probe_network, probe_sim};
 use std::io;
 use std::path::Path;
 use std::process::ExitCode;
@@ -10,7 +10,7 @@ fn run() -> io::Result<()> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     if args.len() == 1 && args[0] == "--help" {
         println!(
-            "Usage: sim_probe DEVICE\nQuery SIM status on a synchronized SIM7600 AT port (5s exchange deadline)."
+            "Usage: sim_probe DEVICE\nQuery SIM and network registration on a synchronized SIM7600 AT port (5s per stage)."
         );
         return Ok(());
     }
@@ -22,16 +22,31 @@ fn run() -> io::Result<()> {
     }
     let port = SerialPort::open(Path::new(&args[0]))?;
     let (port, result) = probe_sim(port, Instant::now() + Duration::from_secs(5))?;
+    let (port, network) = if result.status == SimStatus::Ready {
+        let (port, network) = probe_network(port, Instant::now() + Duration::from_secs(5))?;
+        (port, Some(network))
+    } else {
+        (port, None)
+    };
     port.close()?;
     let status = match result.status {
         SimStatus::Ready => "READY",
         SimStatus::PinRequired => "SIM PIN",
         SimStatus::PukRequired => "SIM PUK",
     };
-    println!(
-        "SIM status: {status}\nNotifications observed: {}",
-        result.notifications
-    );
+    println!("SIM status: {status}");
+    let mut notifications = result.notifications;
+    if let Some(network) = network {
+        println!(
+            "Circuit-switched registration: {}",
+            network.circuit_switched
+        );
+        println!("LTE/EPS registration: {}", network.eps);
+        notifications = notifications.saturating_add(network.notifications);
+    } else {
+        println!("Network registration: skipped (SIM locked)");
+    }
+    println!("Notifications observed: {notifications}");
     Ok(())
 }
 fn main() -> ExitCode {
