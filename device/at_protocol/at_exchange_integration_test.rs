@@ -1,4 +1,5 @@
 //! Exercise the real writer/reader/parser chain through an in-memory modem peer.
+use at_command::{Command, Notification, Reply, SimStatus};
 use at_exchange::{AtExchange, ExchangeError};
 use at_reply_reader::ReplyReadError;
 use at_response::{ResponseError, ResponseEvent};
@@ -40,11 +41,9 @@ fn complete_exchange_preserves_notifications_and_returns_connection() {
     let now = Instant::now();
     let mut exchange = AtExchange::new(
         modem(b"+CMTI: 1\r\n+CPIN: READY\r\nOK\r\ntail"),
-        "AT+CPIN?",
-        "+CPIN:",
+        Command::QuerySimReadiness,
         now + Duration::from_secs(1),
-    )
-    .unwrap();
+    );
     let mut events = Vec::new();
     for _ in 0..100 {
         if let Some(event) = exchange.poll(now).unwrap() {
@@ -56,8 +55,13 @@ fn complete_exchange_preserves_notifications_and_returns_connection() {
         }
     }
     assert_eq!(events.len(), 3);
-    assert!(matches!(&events[0], ResponseEvent::Notification(s) if s == "+CMTI: 1"));
-    assert!(matches!(&events[1], ResponseEvent::Data(s) if s == "+CPIN: READY"));
+    assert!(
+        matches!(&events[0], ResponseEvent::Notification(Notification::Unknown(s)) if s == "+CMTI: 1")
+    );
+    assert!(matches!(
+        &events[1],
+        ResponseEvent::Data(Reply::SimReadiness(SimStatus::Ready))
+    ));
     assert!(matches!(events[2], ResponseEvent::Complete));
     let mut transport = exchange.finish().ok().unwrap();
     let mut tail = String::new();
@@ -69,7 +73,7 @@ fn complete_exchange_preserves_notifications_and_returns_connection() {
 fn deadline_is_shared_between_writing_and_reading() {
     let now = Instant::now();
     let deadline = now + Duration::from_secs(1);
-    let mut exchange = AtExchange::new(modem(b"OK\r\n"), "AT+CPIN?", "+CPIN:", deadline).unwrap();
+    let mut exchange = AtExchange::new(modem(b"OK\r\n"), Command::QuerySimReadiness, deadline);
     for _ in 0..5 {
         assert!(exchange.poll(now).unwrap().is_none());
     }
@@ -81,11 +85,10 @@ fn deadline_is_shared_between_writing_and_reading() {
     ));
     assert!(matches!(exchange.poll(now), Err(ExchangeError::Closed)));
     assert!(exchange.finish().is_err());
-    let mut exchange = AtExchange::new(modem(b""), "AT+CPIN?", "+CPIN:", deadline).unwrap();
+    let mut exchange = AtExchange::new(modem(b""), Command::QuerySimReadiness, deadline);
     assert!(
         matches!(exchange.poll(deadline), Err(ExchangeError::Write(e)) if e.kind() == io::ErrorKind::TimedOut)
     );
     assert!(matches!(exchange.poll(now), Err(ExchangeError::Closed)));
     assert!(exchange.finish().is_err());
-    assert!(AtExchange::new(modem(b""), "AT", "", deadline).is_err());
 }

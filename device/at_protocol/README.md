@@ -48,20 +48,32 @@ Modem -> host: +CMTI: "SM",7\r\n  (unrequested event; may be interleaved)
 Modem -> host: OK\r\n            (command finished)
 ```
 
-Detailed line classification is implemented by `AtResponse` in `at_response.rs`.
-Give it the sent command, expected reply prefix and deadline; pass complete strings
-without CR/LF. It returns events rather than sending commands or reading a port.
+`at_command.rs` is the translation boundary. Callers choose meaningful operations;
+only this module knows command spellings, reply prefixes, status values and
+notification payloads. Add future commands and their decoders here together.
 
-| Complete line / operation | Result for `AT+CPIN?`, prefix `+CPIN:` |
+| Wire code | Semantic interface |
 |---|---|
-| `AT+CPIN?` | Valid echo: `Echo` |
-| `+CPIN: READY` | Matching reply: `Data`; its value still needs adapter validation |
-| `+CMTI: "SM",7` | Unrequested event: `Notification`; not command completion |
-| `OK` before deadline | Successful completion: `Complete` |
-| `ERROR`, `+CME ERROR: 10`, `+CMS ERROR: 500` | Valid failure replies: `Rejected` |
-| Empty expected prefix at construction | Invalid configuration: `InvalidPrefix` |
-| A line at/after deadline | Too late: `TimedOut`, even if it is `OK` |
-| Another line after completion/error/timeout | Invalid reuse: `Closed` |
+| `AT` | `Command::CheckConnection` |
+| `AT+CPIN?` | `Command::QuerySimReadiness` → `Reply::SimReadiness(SimStatus)` |
+| `AT+CREG?` | `Command::QueryCircuitSwitchedRegistration` → `Reply::Registration(RegistrationStatus)` |
+| `AT+CEREG?` | `Command::QueryLteRegistration` → `Reply::Registration(RegistrationStatus)` |
+| `+CMTI: "SM",7` | `Notification::SmsStored { storage: MessageStorage::Sim, index: 7 }` |
+
+`AtResponse` tracks completion and deadlines around this translation. Give it a
+`Command` and deadline; pass complete lines without CR/LF. The command binds the
+request to its expected reply, so callers cannot mismatch command/prefix strings.
+Replies are typed before reaching consumers. Invalid expected payloads return
+`InvalidReply`; modem error results return `Rejected`. Both close the tracker.
+Echo and completion become `Echo` and `Complete`. A line at or after the deadline
+returns `TimedOut`; reuse after completion or failure returns `Closed`.
+
+Stored-message notifications translate SIM (`SM`), modem (`ME`) and combined
+(`MT`) storage; other memory names remain `MessageStorage::Other`. A slot is not a
+durable message identity. Unrecognized or malformed notifications remain
+`Notification::Unknown` with their original text. Notifications deliberately lack
+`Debug`: raw future events may contain private data and must not be logged.
+Registration location fields are validated and discarded, never exposed in replies.
 
 Unknown lines become notifications; the matcher does not prove they are valid
 modem events. Numeric result codes, multiline payloads, prompts and prefixes shared
@@ -74,10 +86,10 @@ Reference: [SIMCom AT manual](https://files.waveshare.com/upload/6/68/SIM7500_SI
 ## Sending a command
 
 `AtCommandWriter` owns a nonblocking `Write` transport while sending one command.
-Construct it with the transport, printable ASCII command (starting with `AT`,
-maximum 4096 bytes, no CR/LF) and a monotonic deadline. It appends the shared CR
-constant automatically. Invalid input returns an IO error and drops the supplied
-transport. This checks framing only, not whether a command is supported or safe.
+Construct it with the transport, a supported `Command` and a monotonic deadline.
+It obtains wire bytes from the command interface and appends the shared CR
+constant automatically. Constructors are infallible because arbitrary raw commands
+and mismatched reply prefixes cannot be supplied.
 
 Call `poll(Instant::now())` once per scheduling turn. It attempts one write,
 returns false for incomplete progress, and returns true after all bytes are
@@ -97,10 +109,9 @@ whole command, parser integration or recovery is included yet.
 ## Reading a diagnostic reply
 
 `AtReplyReader` owns a nonblocking `Read` transport after a command has been sent.
-Construct it with the sent command, expected reply prefix and deadline, on a
-connection already synchronized by the caller. It combines `AtLineDecoder` with
-`AtResponse`; the prefix determines which lines are data versus notifications.
-The constructor returns errors for invalid prefixes and drops the supplied transport.
+Construct it with the sent `Command` and deadline, on a connection already
+synchronized by the caller. It combines `AtLineDecoder` with `AtResponse`;
+the semantic interface determines typed replies versus notifications.
 
 `poll(now)` attempts one byte read, returning `Some(ResponseEvent)` when a line
 completes or `None` for partial/blank lines or temporary IO unavailability.
@@ -121,9 +132,15 @@ OK for the current reply. Closing/reopening alone does not prove synchronization
 ## One complete diagnostic exchange
 
 `AtExchange` owns a synchronized, nonblocking `Read + Write` transport from sending
-one command through receiving its final reply. Construct it with the command,
-expected data prefix and a single deadline; both command framing and an empty
-prefix are checked before IO. Invalid input drops the supplied transport.
+one command through receiving its final reply. Construct it with a semantic command
+and a single deadline:
+
+```rust
+let exchange = AtExchange::new(port, Command::QuerySimReadiness, deadline);
+```
+
+Consumers match `Reply::SimReadiness(SimStatus::Ready)` and
+`Notification::SmsStored { storage, index }`, without inspecting modem codes.
 
 Call `poll(Instant::now())` repeatedly. It first advances `AtCommandWriter` until
 all command bytes are accepted, then transfers ownership to `AtReplyReader`.

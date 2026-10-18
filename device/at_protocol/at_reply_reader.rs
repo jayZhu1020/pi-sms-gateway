@@ -1,4 +1,5 @@
 //! Read one diagnostic command reply from an already-synchronized connection.
+use at_command::Command;
 use at_decoder::{AtLineDecoder, DecodeError};
 use at_response::{AtResponse, ResponseError, ResponseEvent};
 use std::io::{self, Read};
@@ -14,7 +15,7 @@ pub enum ReplyReadError {
 
 /// Reads modem bytes and returns complete reply or notification events.
 /// `new` owns a nonblocking transport after a command was sent. Supply the same
-/// command, its expected data prefix and a deadline; invalid prefixes are errors.
+/// semantic command and a deadline; wire spellings and reply decoding stay hidden.
 /// `poll(now)` reads at most one byte, returning an event when a line completes,
 /// or None for partial lines/temporary IO errors. Poll during silence for timeout.
 /// Complete ends reading; IO, decoding and response errors stop it permanently.
@@ -31,20 +32,14 @@ pub struct AtReplyReader<R> {
     complete: bool,
 }
 impl<R: Read> AtReplyReader<R> {
-    pub fn new(
-        transport: R,
-        command: &'static str,
-        prefix: &'static str,
-        deadline: Instant,
-    ) -> Result<Self, ReplyReadError> {
-        Ok(Self {
+    pub fn new(transport: R, command: Command, deadline: Instant) -> Self {
+        Self {
             transport,
             decoder: AtLineDecoder::default(),
-            response: AtResponse::new(command, prefix, deadline)
-                .map_err(ReplyReadError::Response)?,
+            response: AtResponse::new(command, deadline),
             stopped: false,
             complete: false,
-        })
+        }
     }
     pub fn poll(&mut self, now: Instant) -> Result<Option<ResponseEvent>, ReplyReadError> {
         if self.stopped {

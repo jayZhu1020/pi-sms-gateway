@@ -1,9 +1,10 @@
-//! Track one diagnostic AT command after its bytes have been sent.
+//! Track one semantic command after its bytes have been sent.
+use at_command::{Command, DecodedLine, Notification, Reply};
 use std::time::Instant;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ResponseError {
-    InvalidPrefix,
+    InvalidReply,
     Rejected,
     TimedOut,
     Closed,
@@ -11,54 +12,30 @@ pub enum ResponseError {
 
 pub enum ResponseEvent {
     Echo,
-    Data(String),
-    Notification(String),
+    Data(Reply),
+    Notification(Notification),
     Complete,
 }
 
-/// Tracks the modem's reply to one diagnostic command.
-///
-/// `new(command, prefix, deadline)` takes two static strings and an `Instant`.
-/// For `AT+CPIN?`, use `+CPIN:` as the reply prefix. It returns a tracker,
-/// or `InvalidPrefix` if the prefix is empty; it does not send the command.
-///
-/// `accept(line, now)` takes one complete `String` and the current time.
-/// It returns `Echo`, `Data(line)`, `Notification(line)`, or `Complete` on `OK`.
-/// Modem errors return `Rejected`. Other lines are treated as notifications;
-/// matching the prefix does not validate the reply's contents.
-///
-/// `check_deadline(now)` takes the current time and returns `Ok(())` while
-/// active, `TimedOut` at/after the deadline, or `Closed` once stopped.
-/// Call it while idle too. Completion, rejection, or timeout stops the tracker.
-/// After timeout, recover the port before a new command so an old `OK` cannot
-/// look like its reply. This object does not read or reset the port.
-/// Multiline payloads, prompts, and overlapping reply/notification prefixes
-/// need additional parsing. Returned lines may contain private data.
+/// Track completion/deadlines while the semantic interface translates each line.
+/// The command determines its encoding and expected reply; callers cannot pair
+/// unrelated request strings and prefixes. Malformed expected replies and modem
+/// errors stop the tracker. Unknown notifications are retained as private data.
+/// After timeout, recover the connection before another command. Multiline
+/// payloads, prompts and ambiguous same-prefix notifications need a session owner.
 pub struct AtResponse {
-    command: &'static str,
-    prefix: &'static str,
+    command: Command,
     deadline: Instant,
     closed: bool,
 }
-
 impl AtResponse {
-    /// Create a tracker from the sent command, expected reply prefix, and deadline.
-    pub fn new(
-        command: &'static str,
-        prefix: &'static str,
-        deadline: Instant,
-    ) -> Result<Self, ResponseError> {
-        if prefix.is_empty() {
-            return Err(ResponseError::InvalidPrefix);
-        }
-        Ok(Self {
+    pub fn new(command: Command, deadline: Instant) -> Self {
+        Self {
             command,
-            prefix,
             deadline,
             closed: false,
-        })
+        }
     }
-
     /// Return whether the command is active; expire it even when no line arrives.
     pub fn check_deadline(&mut self, now: Instant) -> Result<(), ResponseError> {
         if self.closed {
@@ -70,25 +47,26 @@ impl AtResponse {
         }
         Ok(())
     }
-
-    /// Classify a complete line at the given time; return an event or command error.
     pub fn accept(&mut self, line: String, now: Instant) -> Result<ResponseEvent, ResponseError> {
         self.check_deadline(now)?;
-        if line == self.command {
-            return Ok(ResponseEvent::Echo);
-        }
-        if line == "OK" {
+        let decoded = self.command.decode(line).map_err(|_| {
             self.closed = true;
-            return Ok(ResponseEvent::Complete);
-        }
-        if line == "ERROR" || line.starts_with("+CME ERROR:") || line.starts_with("+CMS ERROR:") {
-            self.closed = true;
-            return Err(ResponseError::Rejected);
-        }
-        if line.starts_with(self.prefix) {
-            Ok(ResponseEvent::Data(line))
-        } else {
-            Ok(ResponseEvent::Notification(line))
+            ResponseError::InvalidReply
+        })?;
+        match decoded {
+            DecodedLine::Echo => Ok(ResponseEvent::Echo),
+            DecodedLine::Reply(reply) => Ok(ResponseEvent::Data(reply)),
+            DecodedLine::Notification(notification) => {
+                Ok(ResponseEvent::Notification(notification))
+            }
+            DecodedLine::Complete => {
+                self.closed = true;
+                Ok(ResponseEvent::Complete)
+            }
+            DecodedLine::Rejected => {
+                self.closed = true;
+                Err(ResponseError::Rejected)
+            }
         }
     }
 }
@@ -102,15 +80,24 @@ mod tests {
     fn complete_lines_keep_notifications_separate() {
         let now = Instant::now();
         let mut response =
-            AtResponse::new("AT+CPIN?", "+CPIN:", now + Duration::from_secs(4)).unwrap();
+            AtResponse::new(Command::QuerySimReadiness, now + Duration::from_secs(4));
         let lines = ["AT+CPIN?", "+CPIN: READY", "+CMTI: \"SM\",7", "OK"];
         let events: Vec<_> = lines
             .into_iter()
             .map(|line| response.accept(line.into(), now).unwrap())
             .collect();
         assert!(matches!(events[0], ResponseEvent::Echo));
-        assert!(matches!(&events[1], ResponseEvent::Data(s) if s == "+CPIN: READY"));
-        assert!(matches!(&events[2], ResponseEvent::Notification(s) if s == "+CMTI: \"SM\",7"));
+        assert!(matches!(
+            &events[1],
+            ResponseEvent::Data(Reply::SimReadiness(at_command::SimStatus::Ready))
+        ));
+        assert!(matches!(
+            &events[2],
+            ResponseEvent::Notification(Notification::SmsStored {
+                storage: at_command::MessageStorage::Sim,
+                index: 7
+            })
+        ));
         assert!(matches!(events[3], ResponseEvent::Complete));
         assert_eq!(events.len(), 4);
         assert!(matches!(
@@ -124,7 +111,7 @@ mod tests {
         let now = Instant::now();
         for error in ["ERROR", "+CME ERROR: 10", "+CMS ERROR: 500"] {
             let mut response =
-                AtResponse::new("AT+CPIN?", "+CPIN:", now + Duration::from_secs(4)).unwrap();
+                AtResponse::new(Command::QuerySimReadiness, now + Duration::from_secs(4));
             assert!(matches!(
                 response.accept(error.into(), now),
                 Err(ResponseError::Rejected)
@@ -134,10 +121,25 @@ mod tests {
     }
 
     #[test]
+    fn invalid_expected_payload_closes_without_exposing_raw_data() {
+        let now = Instant::now();
+        let mut response =
+            AtResponse::new(Command::QuerySimReadiness, now + Duration::from_secs(1));
+        assert!(matches!(
+            response.accept("+CPIN: PRIVATE".into(), now),
+            Err(ResponseError::InvalidReply)
+        ));
+        assert!(matches!(
+            response.accept("OK".into(), now),
+            Err(ResponseError::Closed)
+        ));
+    }
+
+    #[test]
     fn silence_and_late_ok_cannot_complete_an_expired_command() {
         let now = Instant::now();
         let deadline = now + Duration::from_secs(4);
-        let mut response = AtResponse::new("AT+CPIN?", "+CPIN:", deadline).unwrap();
+        let mut response = AtResponse::new(Command::QuerySimReadiness, deadline);
         assert_eq!(
             response.check_deadline(deadline),
             Err(ResponseError::TimedOut)
@@ -146,14 +148,10 @@ mod tests {
             response.accept("OK".into(), deadline),
             Err(ResponseError::Closed)
         ));
-        let mut response = AtResponse::new("AT+CPIN?", "+CPIN:", deadline).unwrap();
+        let mut response = AtResponse::new(Command::QuerySimReadiness, deadline);
         assert!(matches!(
             response.accept("OK".into(), deadline),
             Err(ResponseError::TimedOut)
-        ));
-        assert!(matches!(
-            AtResponse::new("AT", "", deadline),
-            Err(ResponseError::InvalidPrefix)
         ));
     }
 }
