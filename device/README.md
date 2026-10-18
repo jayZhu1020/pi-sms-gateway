@@ -21,25 +21,6 @@ before the file closes and releases its lock. This also handles configuration
 failure after capture. Forced process termination/device removal can prevent
 restoration. The advisory lock does not exclude programs that ignore it.
 
-On Linux with Bazelisk and `/bin/stty`:
-
-```sh
-bazel test //device:serial_port_integration_test --test_output=all
-```
-
-`serial_port_integration_test.rs` is a separate test crate using only public APIs.
-Its `SimulatedTerminal` fixture owns a paired OS pseudoterminal: SerialPort opens
-`device_path`, while `send_to_port` and `expect_from_port` act as the peer.
-Setup and descriptor ownership stay inside the fixture; dropping it closes both
-ends. Four tests check competing opens, nonblocking idle
-reads, byte transfers in both directions, close/drop restoration, reopening, and
-invalid-device rejection, preservation of the existing baud rate, and session isolation.
-The session test opens a terminal in a fresh child session and verifies it does
-not acquire a controlling terminal. They exercise the real terminal-options library and
-stty, without a modem or AT parser. Settings snapshots compare exactly. Fixtures
-close automatically. macOS wildcard builds skip this Linux-only target; Ubuntu
-CI executes it. Cross-compilation on Mac checks compilation only.
-
 ## Diagnosing USB modem replies
 
 SerialPort opens with `O_NOCTTY`, so the modem cannot become the process's
