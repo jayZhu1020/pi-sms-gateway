@@ -63,12 +63,15 @@ jobs:
           repository-cache: true
           cache-save: ${{ github.event_name != 'pull_request' }}
       - name: Cross-build an ARM64 Linux executable
-        run: bazel build --config=pi //platforms/pi:smoke
+        run: bazel build --config=pi //platforms/pi:smoke //tool:sim_probe
       - name: Verify architecture and static linking
-        run: python3 platforms/pi/verify_binary.py bazel-bin/platforms/pi/smoke
+        run: |
+          python3 platforms/pi/verify_binary.py bazel-bin/platforms/pi/smoke
+          python3 platforms/pi/verify_binary.py bazel-bin/tool/sim_probe
       - name: Execute on emulated ARM64 Linux
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y qemu-user
           test "$(qemu-aarch64 bazel-bin/platforms/pi/smoke)" = "Pi build smoke test: linux aarch64"
+          qemu-aarch64 bazel-bin/tool/sim_probe --help
