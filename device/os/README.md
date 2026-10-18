@@ -33,15 +33,3 @@ mode before overrides. Unsupported rates/configurations return IO errors; zero
 baud is rejected because it means hangup. Failed application may partially change
 settings. Saving/restoring is explicit; this library does not own the port or lock
 it and does not automatically restore it. A future serial owner supplies cleanup.
-
-Run on Linux with `/bin/stty` and Bazelisk:
-
-```sh
-bazel test //device/os:terminal_options_test --test_output=all
-```
-
-Tests check argument translation, ordering, zero-rate rejection, and real stty
-errors against a nonterminal. Successful configuration/restoration on a simulated
-serial port belongs to the following serial-owner integration PR. No modem needed.
-The Bazel target is Linux-only; macOS wildcard builds skip it. CI runs its tests on
-Ubuntu. Cross-compilation on a Mac checks compilation, not Linux execution.

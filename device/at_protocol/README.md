@@ -94,11 +94,6 @@ reopening a device does not prove that stale replies are gone. Successful writin
 is not a modem acknowledgment or UART-drain guarantee. No automatic retry of the
 whole command, parser integration or recovery is included yet.
 
-Run `bazel test //device/at_protocol:at_command_writer_test --test_output=all`.
-Unit tests use a scripted byte writer to force short writes, temporary errors,
-permanent failure and deadline expiry without hardware or sleeps. Decoder and
-response tracker tests remain independent. OS transport integration is separate.
-
 ## Reading a diagnostic reply
 
 `AtReplyReader` owns a nonblocking `Read` transport after a command has been sent.
@@ -123,12 +118,6 @@ diagnostic-command step, not a bulk-data reader or complete session implementati
 There is no recovery: a fresh reader on a stale connection can still mistake a late
 OK for the current reply. Closing/reopening alone does not prove synchronization.
 
-Run `bazel test //device/at_protocol:at_reply_reader_integration_test --test_output=all`.
-These tests combine the real decoder and response tracker with an in-memory byte
-stream and scripted IO failures. They check ordered events, untouched trailing
-notifications, idle deadlines, EOF/rejection/malformed input, and refused handoff
-after failure. No OS terminal, hardware, sleeps or cleanup are needed.
-
 ## One complete diagnostic exchange
 
 `AtExchange` owns a synchronized, nonblocking `Read + Write` transport from sending
@@ -149,10 +138,3 @@ be reused. An owned SerialPort attempts settings restoration as it is dropped;
 this does not reset or resynchronize the modem. The exchange neither retries a
 whole command nor opens a fresh connection. A synchronized starting connection
 remains a caller precondition, so this is not yet an unattended modem session.
-
-Run `bazel test //device/at_protocol:at_exchange_integration_test --test_output=all`.
-`SimulatedModem` accepts two command bytes per write and asserts that reply reading
-starts only after the command's CR. Tests cover ordered notifications/data/completion,
-untouched trailing bytes, a shared deadline and closed-state behavior after timeout.
-They combine the real writer, reader, decoder and response tracker without hardware
-or sleeps. This is the reusable exchange step for a future read-only probe executable.
