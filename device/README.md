@@ -7,9 +7,8 @@ or flow control, while preserving the current baud rate. All stty interaction re
 
 `SerialPort::open(path)` returns a port or an IO error. USB modem drivers such as
 Linux `option` do not support baud changes: requesting 115200 can make stty fail
-even though the USB connection works. For a physical UART requiring a particular
-rate, use `SerialPort::open_with_baud_rate(path, 115200)`. Unsupported explicit
-rates still fail, and failed setup restores the saved settings.
+even though the USB connection works. SerialPort leaves baud unchanged; failed
+setup still restores the saved settings.
 
 Standard `Read`/`Write`
 traits exchange raw bytes: idle reads can return `WouldBlock`, writes can be
@@ -34,7 +33,7 @@ Its `SimulatedTerminal` fixture owns a paired OS pseudoterminal: SerialPort open
 Setup and descriptor ownership stay inside the fixture; dropping it closes both
 ends. Four tests check competing opens, nonblocking idle
 reads, byte transfers in both directions, close/drop restoration, reopening, and
-invalid-device rejection, preserved/explicit baud rates, and session isolation.
+invalid-device rejection, preservation of the existing baud rate, and session isolation.
 The session test opens a terminal in a fresh child session and verifies it does
 not acquire a controlling terminal. They exercise the real terminal-options library and
 stty, without a modem or AT parser. Settings snapshots compare exactly. Fixtures

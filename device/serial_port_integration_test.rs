@@ -112,31 +112,22 @@ fn rejects_missing_paths_and_non_terminal_devices() {
 }
 
 #[test]
-fn preserves_baud_unless_explicitly_requested() {
+fn preserves_existing_baud_rate() {
     let terminal = SimulatedTerminal::new();
     TerminalOptions::new()
         .set_baud_rate(38400)
         .apply(&terminal.device)
         .unwrap();
     let before = terminal.settings();
-    let speed = || {
-        let output = Command::new("/bin/stty")
-            .arg("speed")
-            .stdin(Stdio::from(terminal.device.try_clone().unwrap()))
-            .output()
-            .unwrap();
-        assert!(output.status.success());
-        String::from_utf8(output.stdout).unwrap().trim().to_owned()
-    };
     let port = SerialPort::open(&terminal.device_path).unwrap();
-    assert_eq!(speed(), "38400");
+    let output = Command::new("/bin/stty")
+        .arg("speed")
+        .stdin(Stdio::from(terminal.device.try_clone().unwrap()))
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8(output.stdout).unwrap().trim(), "38400");
     port.close().unwrap();
-    assert!(terminal.settings() == before);
-    let port = SerialPort::open_with_baud_rate(&terminal.device_path, 115200).unwrap();
-    assert_eq!(speed(), "115200");
-    drop(port);
-    assert!(terminal.settings() == before);
-    assert!(SerialPort::open_with_baud_rate(&terminal.device_path, 0).is_err());
     assert!(terminal.settings() == before);
 }
 

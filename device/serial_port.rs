@@ -27,15 +27,6 @@ pub struct SerialPort {
 impl SerialPort {
     /// Preserve the current baud rate, including on USB modems that ignore it.
     pub fn open(path: &Path) -> io::Result<Self> {
-        Self::open_configured(path, None)
-    }
-
-    /// Request an explicit UART baud rate; unsupported rates remain errors.
-    pub fn open_with_baud_rate(path: &Path, baud: u32) -> io::Result<Self> {
-        Self::open_configured(path, Some(baud))
-    }
-
-    fn open_configured(path: &Path, baud: Option<u32>) -> io::Result<Self> {
         let file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -48,8 +39,7 @@ impl SerialPort {
             saved,
             restore_on_drop: true,
         };
-        let mut options = TerminalOptions::new();
-        options
+        TerminalOptions::new()
             .raw_mode()
             .set_data_bits(DataBits::Eight)
             .set_parity(Parity::None)
@@ -59,11 +49,8 @@ impl SerialPort {
             .set_input_software_flow_control(false)
             .set_ignore_carrier(true)
             .set_receiver_enabled(true)
-            .set_echo(false);
-        if let Some(baud) = baud {
-            options.set_baud_rate(baud);
-        }
-        options.apply(&port.file)?;
+            .set_echo(false)
+            .apply(&port.file)?;
         Ok(port)
     }
 
