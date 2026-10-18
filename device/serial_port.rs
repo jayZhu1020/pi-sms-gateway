@@ -11,7 +11,7 @@ const OPEN_FLAGS: i32 = 0x800 | 0x100; // Linux O_NONBLOCK | O_NOCTTY
 /// Owns one serial port for raw byte reads and writes.
 ///
 /// `open(path)` takes a device path and returns a locked, nonblocking port or
-/// an IO error. It configures 115200 baud, 8 data bits, no parity/flow control,
+/// an IO error. It preserves baud and configures 8 data bits, no parity/flow control,
 /// one stop bit, and no terminal echo. Requires the OS `stty` utility.
 /// Reads/writes return byte counts or IO errors; an idle read can return
 /// `WouldBlock`, and a write can be partial. The caller handles retries/deadlines.
@@ -25,7 +25,17 @@ pub struct SerialPort {
 }
 
 impl SerialPort {
+    /// Preserve the current baud rate, including on USB modems that ignore it.
     pub fn open(path: &Path) -> io::Result<Self> {
+        Self::open_configured(path, None)
+    }
+
+    /// Request an explicit UART baud rate; unsupported rates remain errors.
+    pub fn open_with_baud_rate(path: &Path, baud: u32) -> io::Result<Self> {
+        Self::open_configured(path, Some(baud))
+    }
+
+    fn open_configured(path: &Path, baud: Option<u32>) -> io::Result<Self> {
         let file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -38,9 +48,9 @@ impl SerialPort {
             saved,
             restore_on_drop: true,
         };
-        TerminalOptions::new()
+        let mut options = TerminalOptions::new();
+        options
             .raw_mode()
-            .set_baud_rate(115200)
             .set_data_bits(DataBits::Eight)
             .set_parity(Parity::None)
             .set_stop_bits(StopBits::One)
@@ -49,8 +59,11 @@ impl SerialPort {
             .set_input_software_flow_control(false)
             .set_ignore_carrier(true)
             .set_receiver_enabled(true)
-            .set_echo(false)
-            .apply(&port.file)?;
+            .set_echo(false);
+        if let Some(baud) = baud {
+            options.set_baud_rate(baud);
+        }
+        options.apply(&port.file)?;
         Ok(port)
     }
 
