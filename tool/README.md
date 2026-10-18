@@ -12,22 +12,21 @@ On a Linux development machine with Bazelisk and a native toolchain:
 ```sh
 bazel build //tool:sim_probe
 bazel-bin/tool/sim_probe --help
-bazel test //device:sim7600_probe_integration_test --test_output=all
 ```
 
-The executable is Linux-only. Pure adapter tests also run on macOS. A default
+The executable is Linux-only. A default
 x86-64 Linux build cannot run on the Pi's ARM64 CPU. Build off-device with the Pi
 configuration, then copy the executable to the Pi:
 
 ```sh
 bazel build --config=pi //tool:sim_probe
-python3 platforms/pi/verify_binary.py bazel-bin/tool/sim_probe
-scp bazel-bin/tool/sim_probe USER@PI_HOST:/tmp/sim_probe
+install -m 755 bazel-bin/tool/sim_probe /tmp/sim_probe
+scp /tmp/sim_probe USER@PI_HOST:/tmp/sim_probe
 ssh USER@PI_HOST '/tmp/sim_probe --help'
 ```
 
 The Pi requires `/bin/stty` and serial-device permissions. The updater remains
-future work. Remove the temporary executable after testing.
+future work. Remove the temporary executable when finished.
 
 ## Run an ARM64 executable after installation
 
@@ -64,14 +63,5 @@ The exchange has a five-second deadline and polls at millisecond intervals.
 Opening/restoring the terminal and stty execution are outside that deadline.
 Notifications seen before OK are counted but their contents are not printed or
 stored. This is a diagnostic tool, not a persistent notification consumer.
-
-## Validation
-
-The separate integration tests combine the real exchange/parser with a simulated
-modem, asserting the exact outgoing command and testing READY/PIN/PUK, notification
-counting, invalid/duplicate/missing status, rejection, EOF and an expired deadline.
-Ubuntu CI builds the executable and smoke-tests help and a nonexistent-device
-failure. Hardware readiness depends on the actual SIM/modem state; a modem error
-must remain a failing probe result even when transport works.
 
 Protocol reference: [SIMCom AT manual, CPIN section](https://files.waveshare.com/wiki/SIM7600G-H/SIM7500_SIM7600_Series_AT_Command_Manual_V3.00.pdf).
