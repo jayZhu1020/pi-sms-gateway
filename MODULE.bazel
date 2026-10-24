@@ -23,3 +23,8 @@ single_version_override(
     patches = ["//platforms/pi:rules_rust_musl_linker.patch"],
     patch_strip = 1,
 )
+
+bazel_dep(name = "rules_python", version = "2.4.2")
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(python_version = "3.12", is_default = True)
+use_repo(python, "python_3_12")

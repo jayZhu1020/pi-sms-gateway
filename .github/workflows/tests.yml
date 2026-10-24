@@ -1,4 +1,4 @@
-name: Tests and Rust checks
+name: Tests and code checks
 
 on:
   pull_request:
@@ -38,6 +38,13 @@ jobs:
         run: bazel build //...
       - name: Run all tests
         run: bazel test //... --test_output=errors
+      - name: Run cloud event validator
+        run: |
+          bazel run //cloud:validate_event -- "$GITHUB_WORKSPACE/cloud/fixtures/complete.json" --gateway-id 00000000-0000-4000-8000-000000000002
+          if bazel run //cloud:validate_event -- "$GITHUB_WORKSPACE/cloud/fixtures/complete.json" --gateway-id 00000000-0000-4000-8000-000000000099; then
+            echo "Expected gateway mismatch failure"
+            exit 1
+          fi
       - name: Smoke-test probe CLI
         run: |
           bazel run //tool:sim_probe -- --help

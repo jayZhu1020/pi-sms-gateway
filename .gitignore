@@ -1,3 +1,7 @@
 bazel-*
 # Generated resolution cache; direct build/toolchain versions are pinned in MODULE.bazel.
 MODULE.bazel.lock
+
+# Python interpreter caches.
+__pycache__/
+*.py[cod]
