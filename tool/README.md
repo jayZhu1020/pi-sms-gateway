@@ -4,7 +4,10 @@
 circuit-switched registration with `AT+CREG?` and LTE/EPS registration with
 `AT+CEREG?` on the same serial connection. It never supplies a PIN/PUK,
 changes registration reporting or network settings, sends/deletes SMS, or places
-calls. Modem commands and response validation live in `device/sim7600_probe.rs`, not in the CLI. This is a narrow
+calls. Add `--sms-storage` to inspect the SMS format and selected storage occupancy
+using read-only queries. Semantic wire translation lives in
+`device/at_protocol/at_command.rs`; `device/sim7600_probe.rs` orchestrates the
+queries. This is a narrow
 adapter operation, not yet a complete implementation of `SimDeviceInterface`.
 
 ## Build on a development machine or CI
@@ -35,6 +38,7 @@ future work. Remove the temporary executable when finished.
 ```sh
 ./sim_probe --help
 ./sim_probe /dev/ttyUSB2
+./sim_probe /dev/ttyUSB2 --sms-storage
 ```
 
 `/dev/ttyUSB2` is an example: use the verified AT port or its stable by-id path,
@@ -57,6 +61,21 @@ LTE/EPS registration: registered (roaming)
 Notifications observed: 0
 ```
 
+With `--sms-storage`, a READY SIM also produces a format (`PDU` or `text`) and
+three storage rows: read/delete, write/send, and receive (preferred). Each row
+reports its memory name, used slots and total slots. These roles may share one
+physical store; do not add their counts. Receive preference does not guarantee
+that every stored SMS is in that memory. Unknown memory codes display as
+`other (unsupported)` without exposing the original modem text.
+
+The extra queries are `Command::QuerySmsFormat` (`AT+CMGF?`) and
+`Command::QuerySmsStorage` (`AT+CPMS?`). They do not change format, select a
+store, list/read message contents or mark unread messages as read. Text format
+is reported as a valid observation, not silently changed to PDU. A full or
+zero-capacity store is also a valid snapshot. SMS capture, decoding and storage
+configuration are separate operations. Storage inspection is skipped for a locked
+SIM. Without the flag, the command sequence and output remain the same.
+
 Supported SIM states are READY, SIM PIN and SIM PUK. Exit 0 means the snapshot
 queries and terminal restoration succeeded, including a locked SIM or a network
 that is not registered; read the status values. Network queries are skipped for a locked SIM.
@@ -68,7 +87,8 @@ reports searching, denied, unknown and not-registered states without treating th
 as transport failures. EPS also distinguishes SMS-only and emergency-only states.
 
 The SIM exchange has a five-second deadline; the two network exchanges share a
-separate five-second deadline. Opening/restoring the terminal and stty execution
+separate five-second deadline. The optional format/storage exchanges share a
+third five-second deadline. Opening/restoring the terminal and stty execution
 are outside those deadlines. Polling occurs at millisecond intervals. Unrelated
 notifications seen before OK are counted, but their contents are not printed or
 stored. Location/cell fields in registration replies are discarded. Missing,
@@ -77,4 +97,4 @@ same-prefix registration notifications also fail rather than guessing which
 status belongs to the query. There is no automatic retry. This is a diagnostic
 tool, not a persistent notification consumer.
 
-Protocol reference: [SIMCom AT manual, CPIN/CREG/CEREG sections](https://files.waveshare.com/wiki/SIM7600G-H/SIM7500_SIM7600_Series_AT_Command_Manual_V3.00.pdf).
+Protocol reference: [SIMCom AT manual, CPIN/CREG/CEREG/CMGF/CPMS sections](https://files.waveshare.com/wiki/SIM7600G-H/SIM7500_SIM7600_Series_AT_Command_Manual_V3.00.pdf).

@@ -12,6 +12,10 @@ pub enum Command {
     QueryCircuitSwitchedRegistration,
     /// Query LTE/EPS registration.
     QueryLteRegistration,
+    /// Inspect SMS representation without changing it.
+    QuerySmsFormat,
+    /// Inspect selected SMS memories and their occupancy without selecting a store.
+    QuerySmsStorage,
 }
 
 impl Command {
@@ -22,6 +26,8 @@ impl Command {
             Self::QuerySimReadiness => "AT+CPIN?",
             Self::QueryCircuitSwitchedRegistration => "AT+CREG?",
             Self::QueryLteRegistration => "AT+CEREG?",
+            Self::QuerySmsFormat => "AT+CMGF?",
+            Self::QuerySmsStorage => "AT+CPMS?",
         }
     }
     fn reply_prefix(self) -> Option<&'static str> {
@@ -30,6 +36,8 @@ impl Command {
             Self::QuerySimReadiness => Some("+CPIN:"),
             Self::QueryCircuitSwitchedRegistration => Some("+CREG:"),
             Self::QueryLteRegistration => Some("+CEREG:"),
+            Self::QuerySmsFormat => Some("+CMGF:"),
+            Self::QuerySmsStorage => Some("+CPMS:"),
         }
     }
     /// Translate one framed line in the context of the command that was sent.
@@ -63,6 +71,12 @@ impl Command {
                         self == Self::QueryLteRegistration,
                     )?)
                 }
+                Self::QuerySmsFormat => Reply::SmsFormat(match line[prefix.len()..].trim() {
+                    "0" => SmsFormat::Pdu,
+                    "1" => SmsFormat::Text,
+                    _ => return Err(ParseError::InvalidReply),
+                }),
+                Self::QuerySmsStorage => Reply::SmsStorage(sms_storage(&line[prefix.len()..])?),
                 Self::CheckConnection => unreachable!("attention command has no data prefix"),
             };
             return Ok(DecodedLine::Reply(reply));
@@ -76,10 +90,12 @@ pub enum ParseError {
     InvalidReply,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub enum Reply {
     SimReadiness(SimStatus),
     Registration(RegistrationStatus),
+    SmsFormat(SmsFormat),
+    SmsStorage(SmsStorage),
 }
 
 pub enum DecodedLine {
@@ -99,6 +115,93 @@ pub enum MessageStorage {
     Other(String),
 }
 
+impl MessageStorage {
+    fn from_wire(quoted: &str) -> Option<Self> {
+        let name = quoted.strip_prefix('"')?.strip_suffix('"')?;
+        if name.is_empty() || !name.bytes().all(|b| b.is_ascii_alphanumeric()) {
+            return None;
+        }
+        Some(match name {
+            "SM" => Self::Sim,
+            "ME" => Self::Modem,
+            "MT" => Self::Combined,
+            other => Self::Other(other.to_owned()),
+        })
+    }
+}
+// Unknown codes remain private; presentation never includes modem-supplied text.
+impl std::fmt::Display for MessageStorage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Sim => "SIM",
+            Self::Modem => "modem",
+            Self::Combined => "combined",
+            Self::Other(_) => "other (unsupported)",
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum SmsFormat {
+    Pdu,
+    Text,
+}
+impl std::fmt::Display for SmsFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Pdu => "PDU",
+            Self::Text => "text",
+        })
+    }
+}
+
+#[derive(PartialEq, Eq)]
+pub struct StorageUsage {
+    pub storage: MessageStorage,
+    pub used: u32,
+    pub total: u32,
+}
+
+/// Three roles may refer to the same physical store; do not sum their counts.
+/// Receive storage is a preference, not proof that all messages are stored there.
+#[derive(PartialEq, Eq)]
+pub struct SmsStorage {
+    pub read_delete: StorageUsage,
+    pub write_send: StorageUsage,
+    pub receive: StorageUsage,
+}
+fn sms_storage(payload: &str) -> Result<SmsStorage, ParseError> {
+    let invalid = || ParseError::InvalidReply;
+    let fields: Vec<_> = payload.split(',').map(str::trim).collect();
+    if fields.len() != 9 {
+        return Err(invalid());
+    }
+    let count = |value: &str| {
+        if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(invalid());
+        }
+        value.parse::<u32>().map_err(|_| invalid())
+    };
+    let usage = |fields: &[&str]| {
+        let storage = MessageStorage::from_wire(fields[0]).ok_or_else(invalid)?;
+        let used = count(fields[1])?;
+        let total = count(fields[2])?;
+        if used > total {
+            return Err(invalid());
+        }
+        Ok(StorageUsage {
+            storage,
+            used,
+            total,
+        })
+    };
+    Ok(SmsStorage {
+        read_delete: usage(&fields[..3])?,
+        write_send: usage(&fields[3..6])?,
+        receive: usage(&fields[6..])?,
+    })
+}
+
 /// A stored-SMS indication identifies a slot, not a durable message identity.
 /// Raw unknown notifications may contain private data and must not be logged.
 #[derive(PartialEq, Eq)]
@@ -110,17 +213,8 @@ impl Notification {
     fn decode(line: String) -> Self {
         let stored = (|| {
             let (memory, index) = line.strip_prefix("+CMTI:")?.split_once(',')?;
-            let memory = memory.trim().strip_prefix('"')?.strip_suffix('"')?;
-            if memory.is_empty() || !memory.bytes().all(|b| b.is_ascii_alphanumeric()) {
-                return None;
-            }
+            let storage = MessageStorage::from_wire(memory.trim())?;
             let index = index.trim().parse().ok()?;
-            let storage = match memory {
-                "SM" => MessageStorage::Sim,
-                "ME" => MessageStorage::Modem,
-                "MT" => MessageStorage::Combined,
-                other => MessageStorage::Other(other.to_owned()),
-            };
             Some(Self::SmsStored { storage, index })
         })();
         stored.unwrap_or(Self::Unknown(line))
@@ -228,6 +322,8 @@ mod tests {
             (Command::QuerySimReadiness, "AT+CPIN?"),
             (Command::QueryCircuitSwitchedRegistration, "AT+CREG?"),
             (Command::QueryLteRegistration, "AT+CEREG?"),
+            (Command::QuerySmsFormat, "AT+CMGF?"),
+            (Command::QuerySmsStorage, "AT+CPMS?"),
         ] {
             assert_eq!(command.encode(), expected);
             assert!(command.encode().bytes().all(|b| matches!(b, b' '..=b'~')));
@@ -311,6 +407,81 @@ mod tests {
                 .unwrap(),
             DecodedLine::Notification(Notification::Unknown(_))
         ));
+    }
+
+    #[test]
+    fn decodes_sms_format_and_each_storage_role() {
+        for (wire, expected) in [("+CMGF: 0", SmsFormat::Pdu), ("+CMGF: 1", SmsFormat::Text)] {
+            assert!(
+                matches!(Command::QuerySmsFormat.decode(wire.into()).unwrap(),
+                DecodedLine::Reply(Reply::SmsFormat(format)) if format == expected)
+            );
+        }
+        let line = Command::QuerySmsStorage
+            .decode("+CPMS: \"SM\", 2, 20, \"ME\", 9, 9, \"MT\", 0, 0".into())
+            .unwrap();
+        let DecodedLine::Reply(Reply::SmsStorage(storage)) = line else {
+            panic!("expected storage");
+        };
+        assert!(matches!(storage.read_delete.storage, MessageStorage::Sim));
+        assert_eq!(
+            (storage.read_delete.used, storage.read_delete.total),
+            (2, 20)
+        );
+        assert!(matches!(storage.write_send.storage, MessageStorage::Modem));
+        assert_eq!((storage.write_send.used, storage.write_send.total), (9, 9));
+        assert!(matches!(storage.receive.storage, MessageStorage::Combined));
+        assert_eq!((storage.receive.used, storage.receive.total), (0, 0));
+    }
+
+    #[test]
+    fn preserves_unknown_storage_without_displaying_raw_code() {
+        let line = Command::QuerySmsStorage
+            .decode("+CPMS: \"FUTURE\",0,4294967295,\"SM\",0,1,\"ME\",0,1".into())
+            .unwrap();
+        let DecodedLine::Reply(Reply::SmsStorage(storage)) = line else {
+            panic!("expected storage");
+        };
+        assert_eq!(
+            storage.read_delete.storage.to_string(),
+            "other (unsupported)"
+        );
+        assert!(
+            matches!(storage.read_delete.storage, MessageStorage::Other(raw) if raw == "FUTURE")
+        );
+        assert_eq!(SmsFormat::Pdu.to_string(), "PDU");
+        assert_eq!(SmsFormat::Text.to_string(), "text");
+    }
+
+    #[test]
+    fn rejects_malformed_format_and_storage_with_sanitized_errors() {
+        for wire in ["+CMGF: 2", "+CMGF:", "+CMGF: 0,1", "+CMGF: PRIVATE"] {
+            assert!(matches!(
+                Command::QuerySmsFormat.decode(wire.into()),
+                Err(ParseError::InvalidReply)
+            ));
+        }
+        for payload in [
+            "",
+            "0,1,0,1,0,1",           // write-command reply is not a query reply
+            "\"SM\",0,1,\"ME\",0,1", // missing role
+            "\"SM\",0,1,\"ME\",0,1,\"SM\",0,1,extra",
+            "SM,0,1,\"ME\",0,1,\"SM\",0,1", // missing quotes
+            "\"\",0,1,\"ME\",0,1,\"SM\",0,1",
+            "\"PRIVATE!\",0,1,\"ME\",0,1,\"SM\",0,1",
+            "\"SM\",2,1,\"ME\",0,1,\"SM\",0,1", // impossible occupancy
+            "\"SM\",-1,1,\"ME\",0,1,\"SM\",0,1",
+            "\"SM\",+1,1,\"ME\",0,1,\"SM\",0,1",
+            "\"SM\",0,4294967296,\"ME\",0,1,\"SM\",0,1",
+            "\"SM\",0,1,\"ME\",,1,\"SM\",0,1",
+            "\"SM\",0,1,\"ME\",0,1,\"SM\",2,1",
+        ] {
+            let wire = format!("+CPMS: {payload}");
+            assert!(matches!(
+                Command::QuerySmsStorage.decode(wire).err(),
+                Some(ParseError::InvalidReply)
+            ));
+        }
     }
 
     #[test]

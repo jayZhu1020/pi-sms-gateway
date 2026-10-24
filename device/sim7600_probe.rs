@@ -1,6 +1,6 @@
 //! Read-only SIM7600 diagnostics expressed through semantic AT commands.
 use at_command::{Command, Reply};
-pub use at_command::{RegistrationStatus, SimStatus};
+pub use at_command::{RegistrationStatus, SimStatus, SmsFormat, SmsStorage};
 use at_exchange::AtExchange;
 use at_response::ResponseEvent;
 use std::io::{self, Read, Write};
@@ -64,6 +64,38 @@ pub fn probe_network<T: Read + Write>(
         NetworkProbe {
             circuit_switched,
             eps,
+            notifications: first_notifications.saturating_add(notifications),
+        },
+    ))
+}
+
+/// Read the format and all three storage roles on the same synchronized connection.
+/// Both queries share one deadline. This does not read messages, mark them read,
+/// select storage, change format or change notification settings. Unknown memory
+/// names remain typed/private; CLI presentation redacts their original values.
+pub struct SmsStorageProbe {
+    pub format: SmsFormat,
+    pub storage: SmsStorage,
+    pub notifications: u32,
+}
+pub fn probe_sms_storage<T: Read + Write>(
+    transport: T,
+    deadline: Instant,
+) -> io::Result<(T, SmsStorageProbe)> {
+    let (transport, reply, first_notifications) =
+        query(transport, Command::QuerySmsFormat, deadline)?;
+    let Reply::SmsFormat(format) = reply else {
+        return Err(io::Error::other("unexpected SMS format reply type"));
+    };
+    let (transport, reply, notifications) = query(transport, Command::QuerySmsStorage, deadline)?;
+    let Reply::SmsStorage(storage) = reply else {
+        return Err(io::Error::other("unexpected SMS storage reply type"));
+    };
+    Ok((
+        transport,
+        SmsStorageProbe {
+            format,
+            storage,
             notifications: first_notifications.saturating_add(notifications),
         },
     ))
