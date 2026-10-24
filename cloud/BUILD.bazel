@@ -1,0 +1,24 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+
+py_library(
+    name = "events",
+    srcs = ["__init__.py", "events.py"],
+    visibility = ["//visibility:public"],
+)
+
+py_binary(
+    name = "validate_event",
+    legacy_create_init = 0,
+    srcs = ["validate_event.py"],
+    deps = [":events"],
+)
+
+py_test(
+    name = "events_test",
+    legacy_create_init = 0,
+    srcs = ["events_test.py", "validate_event.py"],
+    main = "events_test.py",
+    data = glob(["fixtures/*.json"]),
+    deps = [":events"],
+    size = "small",
+)
